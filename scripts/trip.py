@@ -3,7 +3,6 @@ import networkx as nx
 import matplotlib.pyplot as plt
 
 
-
 class Trip:
     def __init__(self, time, passengers):
         self.locations = []
@@ -58,9 +57,6 @@ class Trip:
             plt.show()
         
         self.locations_sec = new_locations
-
-    def set_start(self, start):
-        self.set_start
 
     def append_time(self, t):
         self.times.append(t)

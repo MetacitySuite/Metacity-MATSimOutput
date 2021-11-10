@@ -3,9 +3,11 @@
 import pandas as pd
 import xml.etree.ElementTree as ET
 import gzip
+import geopandas as gpd
+from shapely.geometry import LineString
 
 
-class network:
+class Network:
     def __init__(self):
         self.xml_path = ""
         self.links = pd.DataFrame()
@@ -61,5 +63,26 @@ class network:
 
     def return_network(self):
         return self.net
+
+    def export_shp(self, path_shp):
+        #todo
+        lines = []
+        modes = []
+        for i,link in self.net.iterrows():
+            line = LineString([(-float(link['x_from']), -float(link['y_from'])), (-float(link['x_to']), -float(link['y_to']))])
+            lines.append(line)
+            modes.append(link['link_modes'])
+
+        network_shp = gpd.GeoDataFrame(data={
+                                'geometry': lines,
+                                'mode' : modes,
+                                })
+
+        #save GeoDataFrame as .SHP
+        network_shp.to_file(filename=path_shp)
+        del network_shp
+
+        
+
 
 

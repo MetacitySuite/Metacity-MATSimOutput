@@ -1,17 +1,16 @@
 from os import path
 import pandas as pd
 import numpy as np
-from more_itertools import chunked
 import geopandas as gpd
 import json
 import network as net
 from agent import Agent
-import threading
 from multiprocessing import Pool, Process
 
 CHUNK_SIZE = 500
 OUTPUT_FORMAT = 'shp'
 PARALLEL = True
+OUTPUT = "./../output/"
 
 class Exporter:
     def __init__(self, agent_type, network_path):
@@ -22,14 +21,14 @@ class Exporter:
         self.agent_type = type
 
     def count_agents(self):
-        self.events = pd.read_json("./output/events/"+self.agent_type+".json") #memory hog
+        self.events = pd.read_json(OUTPUT+"events/"+self.agent_type+".json") #memory hog
         print("Loaded agents", self.agent_type,"#:", self.events.shape[0])
         self.agent_count = self.events.shape[0]
         del self.events
     
 
     def load_network(self, network_path):
-        n = net.network()
+        n = net.Network()
         n.set_path(network_path)
         n.load_nodes()
         n.load_links()
@@ -48,7 +47,7 @@ class Exporter:
 
 
     def load_events(self): #unused: memory hog
-        self.events = pd.read_json("./output/events/"+self.agent_type+".json")
+        self.events = pd.read_json(OUTPUT+"events/"+self.agent_type+".json")
         print("Loaded agents", self.agent_type,"#:", self.events.shape[0])
         display(self.events.info())
         self.events.sort_values("id", kind="stable", inplace=True)
@@ -57,7 +56,7 @@ class Exporter:
 
 
     def load_events_chunk(self, chunk_size):
-        reader = pd.io.json.read_json("./output/events/"+self.agent_type+".json", lines=True, orient='records', chunksize=chunk_size)
+        reader = pd.io.json.read_json(OUTPUT+"events/"+self.agent_type+".json", lines=True, orient='records', chunksize=chunk_size)
         return reader
 
 
@@ -137,7 +136,7 @@ class Exporter:
 
         
     def export_agents(self, chunk_size = CHUNK_SIZE, format = OUTPUT_FORMAT, parallel=PARALLEL):
-        path_prefix = './output/matsim_vehicles_'+str(format)+'/chunks'+str(chunk_size)+'/'   
+        path_prefix = OUTPUT+'matsim_vehicles_'+str(format)+'/chunks'+str(chunk_size)+'/'   
         event_reader = self.load_events_chunk(chunk_size) 
         chunk_i = 0
         if(parallel):
