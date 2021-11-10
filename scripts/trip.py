@@ -27,11 +27,11 @@ class Trip:
             elif (np.isnan(l[0])):
                 continue
             elif last_time != -1 and not (is_close[0] and is_close[1]) and  not (t == last_time): # time changed and place changed
-                t_diff = int(t - last_time)
+                t_diff = int(t - last_time) #
                 i_x = ((l[0] - last_loc[0])/np.float64(t_diff))
                 i_y = ((l[1] - last_loc[1])/np.float64(t_diff))
                 # for each second of difference
-                new_locations.extend([ [last_loc[0] + t*i_x, last_loc[1]+ t*i_y] for t in range(1,t_diff)])
+                new_locations.extend([ [last_loc[0] + t*i_x, last_loc[1]+ t*i_y] for t in range(0,t_diff+1)])
             elif (is_close[0] and is_close[1]) and  not (t == last_time): # time changed but not place
                 new_locations.extend([ [l[0],l[1]] for t in range(int(t - last_time))  ])
             last_loc = l

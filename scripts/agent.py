@@ -61,7 +61,7 @@ class Agent:
                 #save finished Trip
                 if (trip.start > -1):
                     trip.append_time(time)
-                    trip.append_location(B)
+                    trip.append_location(B) #add end
                     #trip.destination = str(row.facility) unused
                     trip.get_locations_by_second()
                     self.trips.append(trip)
@@ -74,7 +74,7 @@ class Agent:
                     trip.route_id = trip_route
                     trip.line_id = trip_line
                 trip.append_time(time)
-                trip.append_location(B)
+                trip.append_location(A) # add start
 
             elif row.type == "PersonEntersVehicle":
                 #check if passenger leaves vehicle
@@ -124,7 +124,7 @@ class Agent:
                 #print("Vehicle arrived at facility:", row.facility)
                 trip = Trip(time, old_passengers)
                 trip.append_time(time)
-                trip.append_location(B)
+                trip.append_location(A)
                 #check if passenger leaves vehicle
                 two_interactions = self.events.iloc[np.where(self.events.person_id == row.person_id)].shape[0] > 1
                 if two_interactions and str(row.person_id).isnumeric():
@@ -178,7 +178,7 @@ class Agent:
             'veh_type': self.type,
             'route_id': route_ids,
             'line_id' : line_ids,
-            't_series': True})
+            'metatype': "time_series"})
 
         self.geotrips = agent_geotrips
         #print("# of geotrips:", len(self.geotrips))
