@@ -13,7 +13,7 @@ class Trip:
         self.destination = ''
         self.route_id = -1
         self.line_id = -1
-        #self.vehicle_type =
+        self.vehicle_id = ''
 
     def get_locations_by_second(self, show_trip = False): 
         new_locations = []

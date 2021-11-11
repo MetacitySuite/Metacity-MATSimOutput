@@ -4,7 +4,7 @@ import numpy as np
 import geopandas as gpd
 import json
 import network as net
-from agent import Agent
+from agent import MHD, Car, Human
 from multiprocessing import Pool, Process
 
 CHUNK_SIZE = 500
@@ -16,6 +16,8 @@ class Exporter:
     def __init__(self, agent_type, network_path):
         self.load_network(network_path)
         self.set_agent(agent_type)
+        if(agent_type == "agent"):
+            self.load_transport()
 
     def set_agent(self, type):
         self.agent_type = type
@@ -59,6 +61,32 @@ class Exporter:
         reader = pd.io.json.read_json(OUTPUT+"events/"+self.agent_type+".json", lines=True, orient='records', chunksize=chunk_size)
         return reader
 
+    def load_transport(self, vehicle_types = ["car","tram","subway","bus","funicular"]):
+        #load all transport event files for later linking (now about 9GB in RAM :3 sorry future me)
+        self.transport = {}
+
+        for file in os.listdir(OUTPUT+"events/"):
+            if file in vehicle_types:
+                self.transport.append(pd.read_json(file),inplace=True)
+                df = pd.DataFrame()
+                df = pd.read_json(file)
+                df.sort_values("id", kind="stable", inplace=True)
+                df.set_index("id", inplace=True)
+                df = self.link_network(df)
+                self.transport[str(file.split('.')[0])] = df.copy()
+        del df
+
+    def link_network(self, v):
+        #join links and coordinates
+        v = v.join(self.network.set_index("link"), on='link').fillna(value=np.nan)
+
+        if("coords_to" in v.columns):
+            v = v.drop(columns=["coords_from", "coords_to"])
+
+        v["coords_to"] = self.return_coords(v.coords_x, v.coords_y, v.x_to, v.y_to)
+        v['coords_from'] = self.return_coords(v.coords_x,v.coords_y, v.x_from, v.y_from) 
+        return v
+
 
     def prepare_agent(self, row, id, verbal=False):
         #prep agent
@@ -71,25 +99,24 @@ class Exporter:
             ].index
         v.drop(drop_idx, inplace=True)
         #join links and coordinates
-        v = v.join(self.network.set_index("link"), on='link').fillna(value=np.nan)
-        if(self.agent_type != "car"):
+        v = self.link_network(v)
+
+        if(self.agent_type not in ["car","agent"]):
             v.drop(["from","to","length","event_id","permlanes",'link_modes','atStop','destinationStop','departure','networkMode','legMode','relativePosition'], axis=1, inplace=True)
-        else: # 'atStop' 'destinationStop' 'departure'
+        else: #mhd
             v.drop(["from","to","length","event_id","permlanes",'link_modes','networkMode','legMode','relativePosition'], axis=1, inplace=True)
 
-        if("coords_to" in v.columns):
-            v = v.drop(columns=["coords_from", "coords_to"])
 
-        v["coords_to"] = self.return_coords(v.coords_x, v.coords_y, v.x_to, v.y_to)
-        v['coords_from'] = self.return_coords(v.coords_x,v.coords_y, v.x_from, v.y_from) 
+        if(self.agent_type == "car"):
+            agent = Car(self.agent_type, id)
+        elif(self.agent_type == "agent"):
+            agent = Human(self.agent_type, id)
+        else:
+            agent = MHD(self.agent_type, id)
 
-        agent = Agent(self.agent_type, id)
         agent.set_events(v)
         print("Memory (kB):",v.memory_usage(index=True).sum()/1000)
-        if(self.agent_type != "car"):
-            agent.extract_trips(verbal) #todo
-        else:
-            agent.extract_trips_cars(verbal) #todo
+        agent.extract_trips(verbal) #todo Human trips
         return agent
 
 
