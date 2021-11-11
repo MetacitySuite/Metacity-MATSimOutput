@@ -44,8 +44,6 @@ class Agent:
         pass
   
 
-
-
 class MHD(Agent):
     def __init__(self, agent_type,id):
         super().__init__(agent_type,id)
@@ -225,7 +223,6 @@ class Human(Agent):
         self.work_from = -1
         self.work_to = -1
 
-
     def prepare_geotrips(self):
         start_times = []
         passengers = []
@@ -238,7 +235,7 @@ class Human(Agent):
             geometries.append(MultiPoint([(a[0],a[1]) for a in trip.locations_sec]))
             vehicle_ids.append(trip.vehicle_id)
         trips_id = self.id
-        
+
         agent_geotrips = gpd.GeoDataFrame(data={
             'start': start_times,
             'passengers':passengers,
@@ -264,8 +261,7 @@ class Human(Agent):
         else:
             #print("Person did not arrive safely.")
             return home_coords, -1, -1
-
-
+    
     def extract_trips(self, verbal=False):
         self.trips = []
         trip = Trip(-1, set())
