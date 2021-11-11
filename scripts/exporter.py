@@ -81,15 +81,20 @@ class Exporter:
 
     def link_network(self, df):
         #join links and coordinates
-        df = df.join(self.network.set_index("link"), on='link').fillna(value=np.nan)
-        if("coords_to" in v.columns):
+        #display(df.head(2))
+        #display(df.info())
+        #display(self.network.head(3))
+        #display(self.network.info())
+        df = df.merge(self.network.set_index("link"), on='link', how="left").fillna(value=np.nan)
+        if("coords_to" in df.columns):
             df = df.drop(columns=["coords_from", "coords_to"])
+        #display(df.head(2))
 
         df["coords_to"] = self.return_coords(df.coords_x, df.coords_y, df.x_to, df.y_to)
         df['coords_from'] = self.return_coords(df.coords_x,df.coords_y, df.x_from, df.y_from) 
         return df
 
-    def append_vehicles(self, df, vehicle_ids, verbal=False):
+    def append_vehicles(self, df, agent_id, vehicle_ids, verbal=False):
         events = pd.DataFrame()
         for v_id in vehicle_ids:
             if v_id is not None:
@@ -133,10 +138,8 @@ class Exporter:
                 #drop events
                 if('type' in veh_events.columns):
                     drop_idx = veh_events[
-                                ((veh_events['type'] == "PersonEntersVehicle") & (veh_events['person_id'] != str(self.id))) | #
-                                ((veh_events['type'] == "PersonLeavesVehicle") & (veh_events['person_id'] != str(self.id))) | #
-                                #(veh_events['type'] == "departure") | 
-                                #(veh_events['type'] == "arrival") | 
+                                ((veh_events['type'] == "PersonEntersVehicle") & (veh_events['person_id'] != str(agent_id))) | #
+                                ((veh_events['type'] == "PersonLeavesVehicle") & (veh_events['person_id'] != str(agent_id))) | #
                                 (veh_events['type'] == "vehicle leaves traffic") | 
                                 (veh_events['type'] == "vehicle enters traffic") |
                                 (veh_events['type'] == "left link")
@@ -145,31 +148,37 @@ class Exporter:
 
                 events = events.append(veh_events)
         df = df.append(events, ignore_index=True)
-        df = self.link_network(df)
+        #df = self.link_network(df)
         df = df.sort_values(["time"], kind="stable") #, "type"
         return df
 
 
-    def link_transport(self,df):
+    def link_transport(self,df, agent_id):
         if(self.agent_type != "agent"):
             return
         vehicle_ids = [ x for x in list(df.vehicle_id.unique())] #veh ids
-        #print("Vehicle ids:", vehicle_ids)
-        df = self.append_vehicles(df, vehicle_ids, verbal=False)
+        print("Vehicle ids:", vehicle_ids)
+        df = self.append_vehicles(df, agent_id, vehicle_ids, verbal=False)
         df.reset_index()
-        df.drop(columns=["index"], inplace=True)
+        if("index" in df.columns):
+            df.drop(columns=["index"], inplace=True)
         drop_idx = df[ 
             (df['type'] == "vehicle leaves traffic") | 
             (df['type'] == "vehicle enters traffic") |
             (df['type'] == "left link")
             ].index
         df.drop(drop_idx, inplace=True)
-        df["person_id"] = self.id
+        df["person_id"] = agent_id
         return df
 
-    def prepare_agent(self, row, id, verbal=False):
+    def prepare_agent(self, row, agent_id, verbal=False):
         #prep agent
         v = pd.DataFrame.from_dict(row["events"])
+
+        #join links and coordinates
+        v = self.link_transport(v, agent_id)
+        v = self.link_network(v)
+
         #remove unused event types
         drop_idx = v[
             (v['type'] == "vehicle leaves traffic") | 
@@ -177,19 +186,24 @@ class Exporter:
             (v['type'] == "left link")
             ].index
         v.drop(drop_idx, inplace=True)
-        #join links and coordinates
-        v = self.link_transport(v)
-        v = self.link_network(v)
 
+        cols = ["from","to","length","event_id",
+        "permlanes",'link_modes','atStop','destinationStop',
+        'departure','networkMode','legMode','relativePosition']
+
+        to_del = []
+        for col in cols:
+            if(col in v.columns):
+                to_del.append(col)
+
+        v.drop(to_del, axis=1, inplace=True)
+            
         if(self.agent_type == "car"):
-            v.drop(["from","to","length","event_id","permlanes",'link_modes','networkMode','legMode','relativePosition'], axis=1, inplace=True)
-            agent = Car(self.agent_type, id)
+            agent = Car(self.agent_type, agent_id)
         elif(self.agent_type == "agent"):
-            v.drop(["from","to","length","event_id","permlanes",'link_modes','networkMode','legMode','relativePosition'], axis=1, inplace=True)
-            agent = Human(self.agent_type, id)
+            agent = Human(self.agent_type, agent_id)
         else:
-            v.drop(["from","to","length","event_id","permlanes",'link_modes','atStop','destinationStop','departure','networkMode','legMode','relativePosition'], axis=1, inplace=True)
-            agent = MHD(self.agent_type, id)
+            agent = MHD(self.agent_type, agent_id)
 
         
         agent.set_events(v)
@@ -217,7 +231,6 @@ class Exporter:
                 print("implement (geo)json support")
                 return
             del a
-            gc.collect()
 
         #save chunks
         if(output_type == 'shp'):

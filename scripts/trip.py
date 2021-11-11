@@ -15,10 +15,20 @@ class Trip:
         self.line_id = -1
         self.vehicle_id = ''
 
+    def info(self):
+        print("Trip:")
+        print("\tstart:", self.start)
+        print("\tend:", self.times[-1], self.start + len(self.locations_sec))
+        print("\t:",len(self.locations),len(self.locations_sec))
+
+
     def get_locations_by_second(self, show_trip = False): 
         new_locations = []
         last_loc = [-1,-1]
         last_time = -1
+    
+        #print("locs:",self.locations)
+        #print("times:",self.times)
 
         for l,t in zip(self.locations, self.times):
             is_close = np.isclose(l, last_loc, rtol=1e-05, atol=1e-08, equal_nan=False)

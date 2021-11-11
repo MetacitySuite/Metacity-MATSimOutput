@@ -21,16 +21,16 @@ def base64_to_int32(b64data):
 
 
 class Agent:
-    def __init__(self,agent_type,id):
+    def __init__(self,agent_type,agent_id):
         self.type =  agent_type
         self.trips = []
         self.geotrips = gpd.GeoDataFrame()
-        self.id = id
+        self.id = agent_id
         self.events = pd.DataFrame()
 
     def set_events(self, events):
         events['type'] = pd.Categorical(events['type'], 
-                ["VehicleArrivesAtFacility", "PersonLeavesVehicle","PersonEntersVehicle","VehicleDepartsAtFacility"])
+                ["actstart","actend","VehicleArrivesAtFacility", "PersonLeavesVehicle","PersonEntersVehicle","VehicleDepartsAtFacility","entered_link"])
         ##sort vehicle by time and type
         events = events.sort_values(["time","type"],kind="stable")
         self.events = events
@@ -228,12 +228,15 @@ class Human(Agent):
         passengers = []
         geometries = []
         vehicle_ids = []
+        veh_types = []
 
         for trip in self.trips:
+            #trip.info()
             start_times.append(int(trip.start))
             passengers.append(npint32_to_buffer(np.array(list(trip.passengers))))
             geometries.append(MultiPoint([(a[0],a[1]) for a in trip.locations_sec]))
             vehicle_ids.append(trip.vehicle_id)
+            veh_types.append(trip.vehicle_id.split('_')[-1])
         trips_id = self.id
 
         agent_geotrips = gpd.GeoDataFrame(data={
@@ -241,9 +244,11 @@ class Human(Agent):
             'passengers':passengers,
             'geometry': geometries,
             'id': trips_id,
-            'veh_type': self.type,
+            'veh_type': veh_types,
             'vehicle_id': vehicle_ids,
             'metatype': "time_series"})
+
+        display(agent_geotrips)
         self.geotrips = agent_geotrips
 
 
@@ -263,7 +268,7 @@ class Human(Agent):
             return home_coords, -1, -1
     
     def extract_trips(self, verbal=False):
-        self.trips = []
+        #self.trips = []
         trip = Trip(-1, set())
         in_trip = False
         in_mhd = False
@@ -306,7 +311,7 @@ class Human(Agent):
             if not in_trip and ((event_type == 'PersonEntersVehicle' and v.isnumeric()) or (event_type == "waitingForPt")): 
                 # add waiting for pt times
                 in_trip = True
-                trip = Trip(time, set(self.id))
+                trip = Trip(time, set([str(self.id)]))
                 trip.start = time
                 if(v.isnumeric()):
                     trip.vehicle_id = "veh_"+v+"_car"
@@ -323,6 +328,7 @@ class Human(Agent):
             if(event_type == 'PersonLeavesVehicle' and in_trip and in_car) or (event_type == 'PersonLeavesVehicle' and in_trip and in_mhd):
                 trip.append_location(B)
                 trip.append_time(time)
+                trip.get_locations_by_second()
                 self.trips.append(trip)
                 in_trip = False
                 in_mhd = False
