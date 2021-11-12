@@ -26,9 +26,6 @@ class Trip:
         new_locations = []
         last_loc = [-1,-1]
         last_time = -1
-    
-        #print("locs:",self.locations)
-        #print("times:",self.times)
 
         for l,t in zip(self.locations, self.times):
             is_close = np.isclose(l, last_loc, rtol=1e-05, atol=1e-08, equal_nan=False)

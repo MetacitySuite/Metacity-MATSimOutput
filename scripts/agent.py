@@ -48,31 +48,33 @@ class MHD(Agent):
     def __init__(self, agent_type,id):
         super().__init__(agent_type,id)
 
-        def prepare_geotrips(self):
-            start_times = []
-            passengers = []
-            geometries = []
-            route_ids = []
-            line_ids = []
+    def prepare_geotrips(self):
+        start_times = []
+        passengers = []
+        geometries = []
+        route_ids = []
+        line_ids = []
 
-            for trip in self.trips:
-                start_times.append(int(trip.start))
-                route_ids.append(trip.route_id) # id routy str
-                line_ids.append(trip.line_id) # id linky str
-                passengers.append(npint32_to_buffer(np.array(list(trip.passengers))))
-                geometries.append(MultiPoint([(a[0],a[1]) for a in trip.locations_sec]))
+        for trip in self.trips:
+            start_times.append(int(trip.start))
+            route_ids.append(trip.route_id) # id routy str
+            line_ids.append(trip.line_id) # id linky str
+            passengers.append(npint32_to_buffer(np.array(list(trip.passengers))))
+            geometries.append(MultiPoint([(a[0],a[1]) for a in trip.locations_sec]))
 
-            trips_id = self.id
-            agent_geotrips = gpd.GeoDataFrame(data={
-                'start': start_times,
-                'passengers':passengers,
-                'geometry': geometries,
-                'id': trips_id,
-                'veh_type': self.type,
-                'route_id': route_ids,
-                'line_id' : line_ids,
-                'metatype': "time_series"})
-            self.geotrips = agent_geotrips
+        trips_id = self.id
+
+        agent_geotrips = gpd.GeoDataFrame(data={
+            'start': start_times,
+            'passengers':passengers,
+            'geometry': geometries,
+            'id': trips_id,
+            'veh_type': self.type,
+            'route_id': route_ids,
+            'line_id' : line_ids,
+            'metatype': "time_series"})
+
+        self.geotrips = agent_geotrips
 
     def extract_trips(self, verbal=False):
         self.trips =[]
@@ -135,7 +137,6 @@ class MHD(Agent):
                 #print("\tdeparts")
                 in_station = False
 
-
             if not np.isnan(A[0]):
                 trip.append_time(time)
                 trip.append_location(A)
@@ -150,28 +151,31 @@ class Car(Agent):
     def __init__(self, agent_type,id):
         super().__init__("car",id)
 
-        def prepare_geotrips(self):
-            start_times = []
-            passengers = []
-            geometries = []
+    def prepare_geotrips(self):
+        start_times = []
+        passengers = []
+        geometries = []
 
-            for trip in self.trips:
-                start_times.append(int(trip.start))
-                passengers.append(npint32_to_buffer(np.array(list(trip.passengers))))
-                geometries.append(MultiPoint([(a[0],a[1]) for a in trip.locations_sec]))
+        for trip in self.trips:
+            start_times.append(int(trip.start))
+            passengers.append(npint32_to_buffer(np.array(list(trip.passengers))))
+            geometries.append(MultiPoint([(a[0],a[1]) for a in trip.locations_sec]))
 
-            trips_id = self.id
-            if(self.type == 'car'): # create consistent id for all vehicles
-                trips_id = "veh_"+str(self.id)+"_car"
+        trips_id = self.id
 
-            agent_geotrips = gpd.GeoDataFrame(data={
-                'start': start_times,
-                'passengers':passengers,
-                'geometry': geometries,
-                'id': trips_id,
-                'veh_type': self.type,
-                'metatype': "time_series"})
-            self.geotrips = agent_geotrips
+        if(self.type == 'car'): # create consistent id for all vehicles
+            trips_id = "veh_"+str(self.id)+"_car"
+
+        agent_geotrips = gpd.GeoDataFrame(data={
+            'start': start_times,
+            'passengers':passengers,
+            'geometry': geometries,
+            'id': trips_id,
+            'veh_type': self.type,
+            'metatype': "time_series"})
+
+        self.geotrips = agent_geotrips
+
 
     def extract_trips(self, verbal=False):
         self.trips = []
@@ -248,7 +252,7 @@ class Human(Agent):
             'vehicle_id': vehicle_ids,
             'metatype': "time_series"})
 
-        display(agent_geotrips)
+        #display(agent_geotrips)
         self.geotrips = agent_geotrips
 
 
@@ -317,6 +321,8 @@ class Human(Agent):
                 in_trip = True
                 trip = Trip(time, set([str(self.id)]))
                 trip.start = time
+                trip.append_time(time)
+                trip.append_location(A)
                 
             if in_trip and (event_type == 'PersonEntersVehicle' and not v.isnumeric()):
                 in_mhd = True
@@ -325,20 +331,19 @@ class Human(Agent):
                 in_car = True
                 trip.vehicle_id = "veh_"+v+"_car"
                     
+            if in_trip and not np.isnan(A[0]):
+                trip.append_time(time)
+                trip.append_location(A)
 
-            #if(event_type == 'arrival'):
             if(event_type == 'PersonLeavesVehicle' and in_trip and in_car) or (event_type == 'PersonLeavesVehicle' and in_trip and in_mhd):
-                trip.append_location(B)
+                #print("Location B", B)
+                trip.append_location(B) #probably always nan 
                 trip.append_time(time)
                 trip.get_locations_by_second()
                 self.trips.append(trip)
                 in_trip = False
                 in_mhd = False
                 in_car = False
-
-            if in_trip and not np.isnan(A[0]):
-                trip.append_time(time)
-                trip.append_location(A)
 
             if(verbal):
                 acts.add(act)

@@ -14,16 +14,21 @@ CHUNK_SIZE = 500
 OUTPUT_FORMAT = 'shp'
 PARALLEL = True
 OUTPUT = "./../output/"
+CARS = "cars_only"
+ALL = "all_transport"
+ALL_WALK = "all_with_walk"
 
 class Exporter:
-    def __init__(self, agent_type, network_path):
+    def __init__(self, agent_type, network_path, export_mode):
         self.load_network(network_path)
-        self.set_agent(agent_type)
+        self.agent_type = agent_type
+        self.export_mode = export_mode
         if(agent_type == "agent"):
-            self.load_transport()
+            if(self.export_mode == CARS):
+                self.load_transport(['car'])
+            else: #load all
+                self.load_transport()
 
-    def set_agent(self, type):
-        self.agent_type = type
 
     def count_agents(self):
         self.events = pd.read_json(OUTPUT+"events/"+self.agent_type+".json") #memory hog
@@ -109,19 +114,15 @@ class Exporter:
 
                     car["vehicle_id"] = v_id
                     for start,dest in zip(starts,ends):
-                        if(verbal):
-                            print(start, dest)
-
                         veh_events = veh_events.append(car.iloc[np.where((car["time"] >= start) & (car["time"]<= dest))])
+                
                 elif  v_id.split('_')[-1] in self.transport.keys():
                     veh_type = v_id.split('_')[-1]
-                    if(verbal):
-                        print("\tVehicle type:", veh_type)
+                
                     veh_row = self.transport[veh_type].loc[v_id]
                     vehicle = pd.DataFrame.from_dict(veh_row["events"])
                     vehicle["vehicle_id"] = v_id
 
-                    #tohle je spatne # tak uz dobry
                     a = df.iloc[np.where(df.vehicle_id == v_id)] #pick start and end points of vehicle interaction(s)
                     starts = a.iloc[np.where(a.type == "PersonEntersVehicle")].time.to_list()
                     ends = a.iloc[np.where(a.type == "PersonLeavesVehicle")].time.to_list()
@@ -136,9 +137,11 @@ class Exporter:
                     drop_idx = veh_events[
                                 ((veh_events['type'] == "PersonEntersVehicle") & (veh_events['person_id'] != str(agent_id))) | #
                                 ((veh_events['type'] == "PersonLeavesVehicle") & (veh_events['person_id'] != str(agent_id))) | #
-                                (veh_events['type'] == "vehicle leaves traffic") | 
-                                (veh_events['type'] == "vehicle enters traffic") |
-                                (veh_events['type'] == "left link")
+                                (veh_events['type'] == "VehicleDepartsAtFacility") |
+                                (veh_events['type'] == "VehicleArrivesAtFacility")
+                                #(veh_events['type'] == "vehicle leaves traffic") | 
+                                #(veh_events['type'] == "vehicle enters traffic") |
+                                #(veh_events['type'] == "left link")
                                 ].index      
                     veh_events.drop(drop_idx, inplace=True)
 
@@ -148,12 +151,28 @@ class Exporter:
         df = df.sort_values(["time"], kind="stable") #, "type"
         return df
 
+    def other_transport(self, vehicle_ids):
+        #check if vehicle_ids contains other transport than cars
+        for v in vehicle_ids:
+            if v != None and not v.isnumeric():
+                return True
+        
+        return False
 
     def link_transport(self,df, agent_id):
         if(self.agent_type != "agent"):
-            return
+            return df
+
         vehicle_ids = [ x for x in list(df.vehicle_id.unique())] #veh ids
-        print("Vehicle ids:", vehicle_ids)
+        #print("Vehicle ids:", vehicle_ids)
+
+        if len(vehicle_ids) == 1:
+            return pd.DataFrame()
+        
+        if self.export_mode == CARS and self.other_transport(vehicle_ids):
+            return pd.DataFrame()
+            
+
         df = self.append_vehicles(df, agent_id, vehicle_ids, verbal=False)
         df.reset_index()
         if("index" in df.columns):
@@ -167,6 +186,8 @@ class Exporter:
 
         #join links and coordinates
         v = self.link_transport(v, agent_id)
+        if(v.empty):
+            return None
         v = self.link_network(v)
 
         #remove unused event types
@@ -197,7 +218,7 @@ class Exporter:
 
         
         agent.set_events(v)
-        print("Memory (kB):",v.memory_usage(index=True).sum()/1000)
+        #print("Memory (kB):",v.memory_usage(index=True).sum()/1000)
         del v
         agent.extract_trips(verbal) #todo Human trips
         return agent
@@ -211,25 +232,23 @@ class Exporter:
         
         for i,row in chunk.iterrows(): #for each agent in chunk
             a = self.prepare_agent(row,row.id,verbal)
-            if(output_type == 'shp'):
+            if a != None and (output_type == 'shp'):
                 a.prepare_geotrips()
                 output = output.append(a.geotrips.copy())
-                
             else:
-                #a.prepare_json()
-                #output.append(a.jsontrips)
                 print("implement (geo)json support")
                 return
             del a
 
         #save chunks
-        if(output_type == 'shp'):
+        if(output_type == 'shp' and not output.empty):
             #reset trip_index
             output.reset_index(inplace=True)
             #save GeoDataFrame as .SHP
             output.to_file(filename=path)
 
-        else:
+        elif(output_type == "json"):
+            print("implement (geo)json support")
             with open(path, 'w') as f:
                 json.dump(output, f)
                 f.close()
@@ -240,6 +259,7 @@ class Exporter:
 
 
     def chunk_task(self, chunk_i, ids, path_prefix, format):
+        #path =  path_prefix+self.agent_type+'_sec_'+str(chunk_i)+'.'+format
         path =  path_prefix+self.agent_type+'_sec_'+str(chunk_i)+'.'+format
         self.extract_chunk(ids, output_type = format, path=path, verbal=False)
         print("Chunk saved to:",path)

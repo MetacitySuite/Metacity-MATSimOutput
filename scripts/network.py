@@ -68,14 +68,17 @@ class Network:
         #todo
         lines = []
         modes = []
+        idx = []
         for i,link in self.net.iterrows():
             line = LineString([(-float(link['x_from']), -float(link['y_from'])), (-float(link['x_to']), -float(link['y_to']))])
             lines.append(line)
+            idx.append(link["link"])
             modes.append(link['link_modes'])
 
         network_shp = gpd.GeoDataFrame(data={
                                 'geometry': lines,
                                 'mode' : modes,
+                                'index' : idx,
                                 })
 
         #save GeoDataFrame as .SHP
