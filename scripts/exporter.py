@@ -77,14 +77,10 @@ class Exporter:
                 df.set_index("id", inplace=True)
                 self.transport[str(file.split('.')[0])] = df.copy()
                 del df
-        print("Transport loaded:", sys.getsizeof(self.transport)/1000)
+        print("Transport loading finished.")
 
     def link_network(self, df):
         #join links and coordinates
-        #display(df.head(2))
-        #display(df.info())
-        #display(self.network.head(3))
-        #display(self.network.info())
         df = df.merge(self.network.set_index("link"), on='link', how="left").fillna(value=np.nan)
         if("coords_to" in df.columns):
             df = df.drop(columns=["coords_from", "coords_to"])
@@ -162,12 +158,6 @@ class Exporter:
         df.reset_index()
         if("index" in df.columns):
             df.drop(columns=["index"], inplace=True)
-        drop_idx = df[ 
-            (df['type'] == "vehicle leaves traffic") | 
-            (df['type'] == "vehicle enters traffic") |
-            (df['type'] == "left link")
-            ].index
-        df.drop(drop_idx, inplace=True)
         df["person_id"] = agent_id
         return df
 

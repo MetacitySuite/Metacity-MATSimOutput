@@ -299,6 +299,10 @@ class Human(Agent):
             print("Agent",self.id, "did not arrive at work.")
             return
 
+        #pd.set_option('display.max_columns', None)
+        #pd.set_option('display.max_rows', None)
+        #display(self.events)
+
         for e, row in self.events.iterrows():
             #print(act, A, B)
             A = row.coords_from
@@ -308,21 +312,19 @@ class Human(Agent):
             time = row.time
             event_type = row.type
 
-            if not in_trip and ((event_type == 'PersonEntersVehicle' and v.isnumeric()) or (event_type == "waitingForPt")): 
+            if not in_trip and ((event_type == 'PersonEntersVehicle') or (event_type == "waitingForPt")): 
                 # add waiting for pt times
                 in_trip = True
                 trip = Trip(time, set([str(self.id)]))
                 trip.start = time
-                if(v.isnumeric()):
-                    trip.vehicle_id = "veh_"+v+"_car"
-                else:
-                    trip.vehicle_id = v
-
-
+                
             if in_trip and (event_type == 'PersonEntersVehicle' and not v.isnumeric()):
                 in_mhd = True
+                trip.vehicle_id = v
             elif in_trip and (event_type == 'PersonEntersVehicle' and v.isnumeric()):
                 in_car = True
+                trip.vehicle_id = "veh_"+v+"_car"
+                    
 
             #if(event_type == 'arrival'):
             if(event_type == 'PersonLeavesVehicle' and in_trip and in_car) or (event_type == 'PersonLeavesVehicle' and in_trip and in_mhd):
