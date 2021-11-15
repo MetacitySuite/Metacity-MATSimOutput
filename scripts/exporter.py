@@ -1,6 +1,7 @@
 import json
-from multiprocessing import Pool, Process
+from multiprocessing import Pool, Process, Manager
 import os, sys, gc
+from memory_profiler import profile
 
 import geopandas as gpd
 import numpy as np
@@ -145,10 +146,18 @@ class Exporter:
                                 ].index      
                     veh_events.drop(drop_idx, inplace=True)
 
+                
+
                 events = events.append(veh_events)
+                del veh_events
+                del vehicle
+                del veh_row
+
         df = df.append(events, ignore_index=True)
         #df = self.link_network(df)
         df = df.sort_values(["time"], kind="stable") #, "type"
+        del events
+        gc.collect()
         return df
 
     def other_transport(self, vehicle_ids):
@@ -159,6 +168,7 @@ class Exporter:
         
         return False
 
+    @profile
     def link_transport(self,df, agent_id):
         vehicle_ids = [ x for x in list(df.vehicle_id.unique())] #veh ids
         #print("Vehicle ids:", vehicle_ids)
@@ -188,7 +198,7 @@ class Exporter:
         if(v.empty):
             del v
             return None
-            
+
         v = self.link_network(v)
         #remove unused event types
         drop_idx = v[
@@ -270,6 +280,10 @@ class Exporter:
         chunk_i = 0
         if(parallel):
             p_list = []
+            #manager = Manager()
+            #ns = manager.Namespace()
+            #if(self.agent_type == "agent"):
+                
             for chunk in event_reader:
                 # Instantiates the thread
                 print("Agents in chunk", chunk_i, ":", chunk.shape[0])
