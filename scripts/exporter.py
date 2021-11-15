@@ -160,9 +160,6 @@ class Exporter:
         return False
 
     def link_transport(self,df, agent_id):
-        if(self.agent_type != "agent"):
-            return df
-
         vehicle_ids = [ x for x in list(df.vehicle_id.unique())] #veh ids
         #print("Vehicle ids:", vehicle_ids)
 
@@ -185,11 +182,14 @@ class Exporter:
         v = pd.DataFrame.from_dict(row["events"])
 
         #join links and coordinates
-        v = self.link_transport(v, agent_id)
-        if(v.empty):
-            return None
-        v = self.link_network(v)
+        if self.agent_type == "agent":
+            v = self.link_transport(v, agent_id)
 
+        if(v.empty):
+            del v
+            return None
+            
+        v = self.link_network(v)
         #remove unused event types
         drop_idx = v[
             (v['type'] == "vehicle leaves traffic") | 
@@ -215,7 +215,6 @@ class Exporter:
             agent = Human(self.agent_type, agent_id)
         else:
             agent = MHD(self.agent_type, agent_id)
-
         
         agent.set_events(v)
         #print("Memory (kB):",v.memory_usage(index=True).sum()/1000)
@@ -235,9 +234,9 @@ class Exporter:
             if a != None and (output_type == 'shp'):
                 a.prepare_geotrips()
                 output = output.append(a.geotrips.copy())
-            else:
-                print("implement (geo)json support")
-                return
+            #else:
+            #    print("implement (geo)json support")
+            #    return
             del a
 
         #save chunks
