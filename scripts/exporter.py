@@ -9,8 +9,6 @@ import pandas as pd
 import network as net
 from agent import MHD, Car, Human
 
-
-CHUNK_SIZE = 500
 OUTPUT_FORMAT = 'shp'
 PARALLEL = True
 OUTPUT = "./../output/"
@@ -100,7 +98,7 @@ class Exporter:
         return df
 
 
-    def pick_vehicle_events(self, df, vehicle_type,  v_id, transport):
+    def pick_vehicle_events(self, df, v_id, transport):
         veh_events = pd.DataFrame()
 
         veh_row = transport.loc[int(v_id)]
@@ -127,14 +125,7 @@ class Exporter:
                 if(verbal):
                     print("Vehicle id:",v_id)
 
-                if str(v_id).isnumeric():
-                    if(verbal):
-                        print("\tVehicle type:", "car")
-                    veh_events = self.pick_vehicle_events(df, "car", v_id, transport)
-                    
-                elif  v_id.split('_')[-1] in self.transport.keys():
-                    veh_type = v_id.split('_')[-1]
-                    veh_events = self.pick_vehicle_events(df, veh_type, v_id, transport)
+                veh_events = self.pick_vehicle_events(df, v_id, transport)
 
                 if('type' in veh_events.columns):
                     drop_idx = veh_events[
