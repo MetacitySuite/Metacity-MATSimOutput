@@ -1,8 +1,6 @@
-import json
-from multiprocessing import Pool, Process, Manager, Queue
-import os, sys, gc
+import os, sys, gc, shutil, json
+from multiprocessing import Pool, Manager
 from memory_profiler import profile
-import itertools
 
 import geopandas as gpd
 import numpy as np
@@ -26,7 +24,6 @@ class Exporter:
         self.agent_type = agent_type
         self.export_mode = export_mode
         
-
 
     def count_agents(self):
         self.events = pd.read_json(OUTPUT+"events/"+self.agent_type+".json") #memory hog
@@ -55,24 +52,30 @@ class Exporter:
         return new_coords
     
 
-    def load_transport(self, vehicle_types = ["car","tram","subway","bus","funicular"]):
+    def load_transport_chunk(self, files):
         #load all transport event files for later linking (now about 9GB in RAM :3 sorry future me)
-        transport = {}
-
-        for folder in os.listdir(OUTPUT+"events/"):
-            if folder in vehicle_types:
-                #load from chunks and concat
-                print("Loading:", folder)
-                df = pd.DataFrame()
-                for file in os.listdir(folder):
-                    df.append(pd.read_json(folder+"/"+file, lines=True, orient='records'))
-
-                df.sort_values("id", kind="stable", inplace=True)
-                df.set_index("id", inplace=True)
-                self.transport[str(file.split('.')[0])] = df.copy()
-                del df
+        df = pd.DataFrame()
+        for file in files:
+            df.append(pd.read_json(file, lines=True, orient='records'))
+            df.sort_values("id", kind="stable", inplace=True)
+            df.set_index("id", inplace=True)
         print("Transport loading finished.")
-        return transport
+        return df
+
+    def load_transport_map(self, vehicle_types = ["car","tram","subway","bus","funicular"]):
+        transport_map = {}
+        files = os.listdir(OUTPUT+"events/")
+
+        for veh in vehicle_types:            
+            if veh+"_map.json" in files:
+                df = pd.DataFrame()
+                df.append(pd.read_json(OUTPUT+"events/"+veh+"_map.json", orient='records'))
+                transport_map.update(df.to_dictionary())
+                #update to full path to chunk
+
+        print(transport_map)
+        return transport_map
+
 
     def link_network(self, df):
         #join links and coordinates
@@ -87,8 +90,12 @@ class Exporter:
 
     def pick_vehicle_events(self, df, vehicle_type,  v_id):
         veh_events = pd.DataFrame()
+        #pick chunk from map
+
+        #load chunk events
+
         if(vehicle_type == 'car'):
-            veh_row = self.transport['car'].loc[int(v_id)]
+            veh_row = self.transport['car'].loc[int(v_id)] #todo
         else:
             veh_row = self.transport[vehicle_type].loc[int(v_id)]
         vehicle = pd.DataFrame.from_dict(veh_row["events"])
@@ -99,6 +106,8 @@ class Exporter:
         vehicle["vehicle_id"] = v_id
         for start,dest in zip(starts,ends):
             veh_events = veh_events.append(vehicle.iloc[np.where((vehicle["time"] >= start) & (vehicle["time"]<= dest))])
+
+        #delete chunk events
         return veh_events
 
 
@@ -247,31 +256,27 @@ class Exporter:
         gc.collect()
 
 
-    def chunk_task(self, chunk_path, path_prefix, format):
-        print("Loading:",chunk_path)
-        chunk = pd.read_json(chunk_path, lines=True, orient='records')
-        chunk_i = int(chunk_path.split('/')[-1].split('.')[0])
-        path =  path_prefix+self.agent_type+'_sec_'+str(chunk_i)+'.'+format
-        print("Agents in chunk", chunk_i, ":", chunk.shape[0])
-        self.extract_chunk(chunk, output_type = format, path=path, verbal=False)
-        print("Chunk saved to:",path)
-
     def chunk_task(self, args):
-        chunk_path, path_prefix, format = args
+        chunk_path, path_prefix, form = args
         print("Loading:",chunk_path)
         chunk = pd.read_json(chunk_path, lines=True, orient='records')
         chunk_i = int(chunk_path.split('/')[-1].split('.')[0])
-        path =  path_prefix+self.agent_type+'_sec_'+str(chunk_i)+'.'+format
-        self.extract_chunk(chunk, output_type = format, path=path, verbal=False)
+        path =  path_prefix+self.agent_type+'_sec_'+str(chunk_i)+'.'+form
+        self.extract_chunk(chunk, output_type = form, path=path, verbal=False)
         print("Chunk saved to:",path)
 
 
     def parallel_run(self, files, proc, path_prefix, format):
+        #add transport to shared namespace
+        m = Manager()
+        nm = m.Namespace()
+
         if(self.agent_type == "agent"):
             if(self.export_mode == CARS):
-                self.transport = self.load_transport(['car'])
+                nm.transport = self.load_transport_map(['car']) #mapa idcek
             else: #load all
-                self.transport = self.load_transport()
+                nm.transport = self.load_transport_map()
+        
 
         args = list()
         for f in files:
@@ -280,14 +285,17 @@ class Exporter:
         with Pool(proc) as pool:
             pool.map(self.chunk_task, args)
 
-        pool.join()
         pool.close()
+        pool.join()
+        
 
-    def export_agents(self, chunk_size = CHUNK_SIZE, format = OUTPUT_FORMAT, parallel=PARALLEL, proc=4):
-        path_prefix = OUTPUT+'matsim_agents_'+str(format)+'/chunks'+str(chunk_size)+'/'   
+    def export_agents(self, format = OUTPUT_FORMAT, parallel=PARALLEL, proc=4):
+        path_prefix = OUTPUT+'matsim_agents_'+str(format)+'/'+self.agent_type+'/'   
         if not os.path.exists(path_prefix):
-                os.makedirs(path_prefix)
+            os.makedirs(path_prefix)
         #event_reader = self.load_events_chunk(chunk_size) 
+        
+        shutil.rmtree(path_prefix)
         dirc = OUTPUT+"events/"+self.agent_type
         files = [ dirc+"/"+f for f in os.listdir(dirc)]
         chunk_i = 0
@@ -297,12 +305,12 @@ class Exporter:
         else:
             if(self.agent_type == "agent"):
                 if(self.export_mode == CARS):
-                    self.transport = self.load_transport(['car'])
-                else: #load all
-                    self.transport = self.load_transport()
+                    self.transport = self.load_transport_map(['car'])
+                else: ##
+                    self.transport = self.load_transport_map()
 
             for file in files:
-                self.chunk_task(file,path_prefix,format)
+                self.chunk_task([file,path_prefix,format])
                 chunk_i +=1
         return
         

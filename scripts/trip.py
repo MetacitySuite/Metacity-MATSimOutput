@@ -79,7 +79,7 @@ class Trip:
         self.get_locations_by_second()
 
     def add_passenger(self, passenger):
-        self.passengers.add(int(passenger))
+        self.passengers.add(np.int32(passenger))
 
     def remove_passenger(self, passenger):
-        self.passengers.remove(int(passenger))
+        self.passengers.remove(np.int32(passenger))

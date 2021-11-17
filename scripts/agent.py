@@ -220,6 +220,7 @@ class Car(Agent):
 class Human(Agent):
     def __init__(self, agent_type,id):
         super().__init__("agent",id)
+        print('agent id type', type(id))
         self.home = []
         self.home_from = -1
         self.home_to = -1
