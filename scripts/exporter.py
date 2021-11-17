@@ -52,15 +52,26 @@ class Exporter:
         return new_coords
     
 
-    def load_transport_chunk(self, files):
-        #load all transport event files for later linking (now about 9GB in RAM :3 sorry future me)
+
+    def load_transport_chunks(slef, veh_ids):
+        #lookup map
+        chunks_to_load = set()
+        for v_id in veh_ids:
+            if v_id.isnumeric():
+                chunks_to_load.add(self.transport_map["car"][v_id])
+            else:
+                veh_type = v_id.split('_')[-1]
+                chunks_to_load.add(self.transport_map[veh_type][v_id])
+
         df = pd.DataFrame()
-        for file in files:
+        for file in chunks_to_load:
             df.append(pd.read_json(file, lines=True, orient='records'))
             df.sort_values("id", kind="stable", inplace=True)
             df.set_index("id", inplace=True)
-        print("Transport loading finished.")
+        #print("Transport loading finished.")
         return df
+
+                
 
     def load_transport_map(self, vehicle_types = ["car","tram","subway","bus","funicular"]):
         transport_map = {}
@@ -68,12 +79,12 @@ class Exporter:
 
         for veh in vehicle_types:            
             if veh+"_map.json" in files:
-                df = pd.DataFrame()
-                df.append(pd.read_json(OUTPUT+"events/"+veh+"_map.json", orient='records'))
-                transport_map.update(df.to_dictionary())
-                #update to full path to chunk
-
-        print(transport_map)
+                print(OUTPUT+"events/"+veh+"_map.json")
+                vehicle_map = pd.read_json(OUTPUT+"events/"+veh+"_map.json", typ="series")
+                vehicle_map = vehicle_map.apply(lambda x: OUTPUT+"events/"+veh+"/"+str(x)+".json") #updates to full path to chunk
+                transport_map["veh"] = vehicle_map
+                
+        #print("Transport map:",transport_map)
         return transport_map
 
 
@@ -88,16 +99,11 @@ class Exporter:
         df['coords_from'] = self.return_coords(df.coords_x,df.coords_y, df.x_from, df.y_from) 
         return df
 
-    def pick_vehicle_events(self, df, vehicle_type,  v_id):
+
+    def pick_vehicle_events(self, df, vehicle_type,  v_id, transport):
         veh_events = pd.DataFrame()
-        #pick chunk from map
 
-        #load chunk events
-
-        if(vehicle_type == 'car'):
-            veh_row = self.transport['car'].loc[int(v_id)] #todo
-        else:
-            veh_row = self.transport[vehicle_type].loc[int(v_id)]
+        veh_row = transport.loc[int(v_id)]
         vehicle = pd.DataFrame.from_dict(veh_row["events"])
 
         starts = df.iloc[np.where(df.vehicle_id == v_id)].loc[np.where(df.type == "PersonEntersVehicle")].time.to_list()
@@ -111,8 +117,11 @@ class Exporter:
         return veh_events
 
 
+    #@profile
     def append_vehicles(self, df, agent_id, vehicle_ids, verbal=False):
         events = pd.DataFrame()
+        #load chunks for vehicle_ids to RAM
+        transport = self.load_transport_chunks()
         for v_id in vehicle_ids:
             if v_id is not None:
                 if(verbal):
@@ -121,31 +130,35 @@ class Exporter:
                 if str(v_id).isnumeric():
                     if(verbal):
                         print("\tVehicle type:", "car")
-                    veh_events = self.pick_vehicle_events(df, "car", v_id)
+                    veh_events = self.pick_vehicle_events(df, "car", v_id, transport)
                     
                 elif  v_id.split('_')[-1] in self.transport.keys():
                     veh_type = v_id.split('_')[-1]
-                    veh_events = self.pick_vehicle_events(df, veh_type, v_id)
+                    veh_events = self.pick_vehicle_events(df, veh_type, v_id, transport)
 
                 if('type' in veh_events.columns):
                     drop_idx = veh_events[
-                                ((veh_events['type'] == "PersonEntersVehicle") & (veh_events['person_id'] != str(agent_id))) | #
-                                ((veh_events['type'] == "PersonLeavesVehicle") & (veh_events['person_id'] != str(agent_id))) | #
+                                (veh_events['type'] == "PersonEntersVehicle") | #& (veh_events['person_id'] != str(agent_id))) | #
+                                (veh_events['type'] == "PersonLeavesVehicle") | #& (veh_events['person_id'] != str(agent_id))) | #
                                 (veh_events['type'] == "VehicleDepartsAtFacility") |
-                                (veh_events['type'] == "VehicleArrivesAtFacility")
-                                #(veh_events['type'] == "vehicle leaves traffic") | 
-                                #(veh_events['type'] == "vehicle enters traffic") |
-                                #(veh_events['type'] == "left link")
+                                (veh_events['type'] == "VehicleArrivesAtFacility") |
+                                (veh_events['type'] == "vehicle leaves traffic") | 
+                                (veh_events['type'] == "vehicle enters traffic") |
+                                (veh_events['type'] == "left link")
                                 ].index      
                     veh_events.drop(drop_idx, inplace=True)
 
                 events = events.append(veh_events)
                 del veh_events
 
+        del transport #!!!
         df = df.append(events, ignore_index=True)
-        df = df.sort_values(["time"], kind="stable") #, "type"
         del events
         gc.collect()
+        df = df.sort_values(["time"], kind="stable") #, "type"
+        df.reset_index(inplace=True)
+        if("index" in df.columns):
+            df.drop(columns=["index"], inplace=True)
         return df
 
     def other_transport(self, vehicle_ids):
@@ -160,29 +173,25 @@ class Exporter:
     def link_transport(self,df, agent_id):
         vehicle_ids = [ x for x in list(df.vehicle_id.unique())] #veh ids
         #print("Vehicle ids:", vehicle_ids)
-
         if len(vehicle_ids) == 1:
             return pd.DataFrame()
         
         if self.export_mode == CARS and self.other_transport(vehicle_ids):
-            return pd.DataFrame()
+            return pd.DataFrame() #omitting this agent 
             
-
         df = self.append_vehicles(df, agent_id, vehicle_ids, verbal=False)
-        df.reset_index()
-        if("index" in df.columns):
-            df.drop(columns=["index"], inplace=True)
         df["person_id"] = agent_id
         return df
 
-    #@profile
+
+    
     def prepare_agent(self, row, agent_id, verbal=False):
         #prep agent
         v = pd.DataFrame.from_dict(row["events"])
 
         #join links and coordinates
         if self.agent_type == "agent":
-            v = self.link_transport(v, agent_id)
+            v = self.link_transport(v, agent_id) 
 
         if(v.empty):
             del v
@@ -268,15 +277,8 @@ class Exporter:
 
     def parallel_run(self, files, proc, path_prefix, format):
         #add transport to shared namespace
-        m = Manager()
-        nm = m.Namespace()
-
-        if(self.agent_type == "agent"):
-            if(self.export_mode == CARS):
-                nm.transport = self.load_transport_map(['car']) #mapa idcek
-            else: #load all
-                nm.transport = self.load_transport_map()
-        
+        #m = Manager()
+        #nm = m.Namespace()
 
         args = list()
         for f in files:
@@ -296,6 +298,13 @@ class Exporter:
         #event_reader = self.load_events_chunk(chunk_size) 
         
         shutil.rmtree(path_prefix)
+
+        if(self.agent_type == "agent"):
+            if(self.export_mode == CARS):
+                self.transport_map = self.load_transport_map(['car'])
+            else: ##
+                self.transport_map = self.load_transport_map()
+
         dirc = OUTPUT+"events/"+self.agent_type
         files = [ dirc+"/"+f for f in os.listdir(dirc)]
         chunk_i = 0
@@ -303,12 +312,6 @@ class Exporter:
             self.parallel_run(files, proc, path_prefix, format)
 
         else:
-            if(self.agent_type == "agent"):
-                if(self.export_mode == CARS):
-                    self.transport = self.load_transport_map(['car'])
-                else: ##
-                    self.transport = self.load_transport_map()
-
             for file in files:
                 self.chunk_task([file,path_prefix,format])
                 chunk_i +=1
