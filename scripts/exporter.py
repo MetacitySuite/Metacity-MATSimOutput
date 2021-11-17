@@ -21,6 +21,13 @@ class Exporter:
         self.load_network(network_path)
         self.agent_type = agent_type
         self.export_mode = export_mode
+        if(self.agent_type == "agent"):
+            if(self.export_mode == CARS):
+                self.transport_map = self.load_transport_map(['car'])
+            else: ##
+                self.transport_map = self.load_transport_map()
+        else:
+            self.transport_map = {}
         
 
     def count_agents(self):
@@ -51,19 +58,21 @@ class Exporter:
     
 
 
-    def load_transport_chunks(slef, veh_ids):
+    def load_transport_chunks(slef, veh_ids, tp_map):
         #lookup map
         chunks_to_load = set()
         for v_id in veh_ids:
-            if v_id.isnumeric():
-                chunks_to_load.add(self.transport_map["car"][v_id])
-            else:
-                veh_type = v_id.split('_')[-1]
-                chunks_to_load.add(self.transport_map[veh_type][v_id])
+            if v_id is not None:
+                if v_id.isnumeric():
+                    chunks_to_load.add(tp_map["car"][int(v_id)])
+                else:
+                    veh_type = v_id.split('_')[-1]
+                    chunks_to_load.add(tp_map[veh_type][v_id])
 
         df = pd.DataFrame()
         for file in chunks_to_load:
-            df.append(pd.read_json(file, lines=True, orient='records'))
+            ch = pd.read_json(file, lines=True, orient='records')
+            df = pd.concat([df,ch])
             df.sort_values("id", kind="stable", inplace=True)
             df.set_index("id", inplace=True)
         #print("Transport loading finished.")
@@ -80,9 +89,9 @@ class Exporter:
                 print(OUTPUT+"events/"+veh+"_map.json")
                 vehicle_map = pd.read_json(OUTPUT+"events/"+veh+"_map.json", typ="series")
                 vehicle_map = vehicle_map.apply(lambda x: OUTPUT+"events/"+veh+"/"+str(x)+".json") #updates to full path to chunk
-                transport_map["veh"] = vehicle_map
+                transport_map[veh] = vehicle_map
                 
-        #print("Transport map:",transport_map)
+        print("Transport map (car):",transport_map["car"])
         return transport_map
 
 
@@ -116,10 +125,10 @@ class Exporter:
 
 
     #@profile
-    def append_vehicles(self, df, agent_id, vehicle_ids, verbal=False):
+    def append_vehicles(self, df, agent_id, vehicle_ids, tp_map, verbal=False):
         events = pd.DataFrame()
         #load chunks for vehicle_ids to RAM
-        transport = self.load_transport_chunks()
+        transport = self.load_transport_chunks(vehicle_ids, tp_map)
         for v_id in vehicle_ids:
             if v_id is not None:
                 if(verbal):
@@ -161,7 +170,7 @@ class Exporter:
         return False
 
     
-    def link_transport(self,df, agent_id):
+    def link_transport(self,df, agent_id, tp_map):
         vehicle_ids = [ x for x in list(df.vehicle_id.unique())] #veh ids
         #print("Vehicle ids:", vehicle_ids)
         if len(vehicle_ids) == 1:
@@ -170,19 +179,19 @@ class Exporter:
         if self.export_mode == CARS and self.other_transport(vehicle_ids):
             return pd.DataFrame() #omitting this agent 
             
-        df = self.append_vehicles(df, agent_id, vehicle_ids, verbal=False)
+        df = self.append_vehicles(df, agent_id, vehicle_ids, tp_map, verbal=False)
         df["person_id"] = agent_id
         return df
 
 
     
-    def prepare_agent(self, row, agent_id, verbal=False):
+    def prepare_agent(self, row, agent_id, tp_map, verbal=False):
         #prep agent
         v = pd.DataFrame.from_dict(row["events"])
 
         #join links and coordinates
         if self.agent_type == "agent":
-            v = self.link_transport(v, agent_id) 
+            v = self.link_transport(v, agent_id, tp_map) 
 
         if(v.empty):
             del v
@@ -222,14 +231,14 @@ class Exporter:
         return agent
 
 
-    def extract_chunk(self, chunk, output_type, path, verbal=False):
+    def extract_chunk(self, chunk, tp_map, output_type, path, verbal=False):
         if(output_type == 'shp'):
             output = gpd.GeoDataFrame()
         else:
             output = []
         
         for i,row in chunk.iterrows(): #for each agent in chunk
-            a = self.prepare_agent(row,row.id,verbal)
+            a = self.prepare_agent(row,row.id, tp_map, verbal)
             if a != None and (output_type == 'shp'):
                 a.prepare_geotrips()
                 output = output.append(a.geotrips.copy())
@@ -257,12 +266,12 @@ class Exporter:
 
 
     def chunk_task(self, args):
-        chunk_path, path_prefix, form = args
+        chunk_path, path_prefix, form, tp_map = args
         print("Loading:",chunk_path)
         chunk = pd.read_json(chunk_path, lines=True, orient='records')
         chunk_i = int(chunk_path.split('/')[-1].split('.')[0])
         path =  path_prefix+self.agent_type+'_sec_'+str(chunk_i)+'.'+form
-        self.extract_chunk(chunk, output_type = form, path=path, verbal=False)
+        self.extract_chunk(chunk, tp_map, output_type = form, path=path, verbal=False)
         print("Chunk saved to:",path)
 
 
@@ -273,7 +282,7 @@ class Exporter:
 
         args = list()
         for f in files:
-            args.append([f, path_prefix, format])
+            args.append([f, path_prefix, format, self.transport_map])
 
         with Pool(proc) as pool:
             pool.map(self.chunk_task, args)
@@ -286,15 +295,11 @@ class Exporter:
         path_prefix = OUTPUT+'matsim_agents_'+str(format)+'/'+self.agent_type+'/'   
         if not os.path.exists(path_prefix):
             os.makedirs(path_prefix)
-        #event_reader = self.load_events_chunk(chunk_size) 
-        
-        shutil.rmtree(path_prefix)
-
-        if(self.agent_type == "agent"):
-            if(self.export_mode == CARS):
-                self.transport_map = self.load_transport_map(['car'])
-            else: ##
-                self.transport_map = self.load_transport_map()
+        else:
+            shutil.rmtree(path_prefix)
+            os.makedirs(path_prefix)
+            
+        print("Saving to:", path_prefix, os.path.exists(path_prefix))
 
         dirc = OUTPUT+"events/"+self.agent_type
         files = [ dirc+"/"+f for f in os.listdir(dirc)]
@@ -304,7 +309,7 @@ class Exporter:
 
         else:
             for file in files:
-                self.chunk_task([file,path_prefix,format])
+                self.chunk_task([file,path_prefix,format, self.transport_map])
                 chunk_i +=1
         return
         
