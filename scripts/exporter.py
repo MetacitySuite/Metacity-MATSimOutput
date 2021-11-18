@@ -239,12 +239,9 @@ class Exporter:
         
         for i,row in chunk.iterrows(): #for each agent in chunk
             a = self.prepare_agent(row,row.id, tp_map, verbal)
-            if a != None and (output_type == 'shp'):
-                a.prepare_geotrips()
+            if a != None:
+                a.prepare_geotrips(output_type)
                 output = output.append(a.geotrips.copy())
-            elif output_type == 'json':
-                print("implement (geo)json support")
-                return
             del a
 
         #save chunk
@@ -255,7 +252,7 @@ class Exporter:
             output.to_file(filename=path)
 
         elif(output_type == "json"):
-            print("implement (geo)json support")
+            #print("implement (geo)json support")
             with open(path, 'w') as f:
                 json.dump(output, f)
                 f.close()
