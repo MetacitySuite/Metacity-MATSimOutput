@@ -227,7 +227,7 @@ class Exporter:
         agent.set_events(v)
         #print("Memory (kB):",v.memory_usage(index=True).sum()/1000)
         del v
-        agent.extract_trips(verbal) #todo Human trips
+        agent.extract_trips(verbal)
         return agent
 
 
@@ -255,7 +255,7 @@ class Exporter:
             output.to_file(filename=path)
 
         elif(output_type == "json"):
-            #print("implement (geo)json support")
+            #save list of agents to JSON
             with open(path, 'w') as f:
                 json.dump(output, f)
                 f.close()

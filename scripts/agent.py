@@ -64,7 +64,8 @@ class MHD(Agent):
                 start_times.append(np.int32(trip.start))
                 route_ids.append(trip.route_id) # id routy str
                 line_ids.append(trip.line_id) # id linky str
-                passengers.append(npint32_to_buffer(np.array(list(trip.passengers))))
+                #passengers.append(npint32_to_buffer(np.array(list(trip.passengers))))
+                passengers.append(list(map(int, list(trip.passengers))))
                 geometries.append(([(a[0],a[1]) for a in trip.locations_sec]))
 
             trips_id = self.id
@@ -206,7 +207,7 @@ class Car(Agent):
         elif(format == 'json'):
             for trip in self.trips:
                 start_times.append(int(trip.start))
-                passengers.append(npint32_to_buffer(np.array(list(trip.passengers))))
+                passengers.append(list(map(int, list(trip.passengers))))
                 points = [np.float64(b) for a in trip.locations_sec for b in a]
                 geometries.append(npfloat64_to_string(points)) #todo
 
@@ -216,7 +217,7 @@ class Car(Agent):
                 trips_id = "veh_"+str(self.id)+"_car"
 
             meta = {}
-            meta["passengers"] = trip.passengers
+            meta["passengers"] = passengers
             meta["start"] = start_times
             meta["id"] = trips_id
             meta["veh_type"] = self.type
@@ -291,7 +292,8 @@ class Human(Agent):
             for trip in self.trips:
                 #trip.info()
                 start_times.append(int(trip.start))
-                passengers.append(npint32_to_buffer(np.array(list(trip.passengers))))
+                #passengers.append(npint32_to_buffer(np.array(list(trip.passengers))))
+                passengers.append(list(map(int, list(trip.passengers))))
                 geometries.append(MultiPoint([(a[0],a[1]) for a in trip.locations_sec]))
                 vehicle_ids.append(trip.vehicle_id)
                 veh_types.append(trip.vehicle_id.split('_')[-1])
@@ -312,7 +314,7 @@ class Human(Agent):
 
             for trip in self.trips:
                 start_times.append(int(trip.start))
-                passengers.append(npint32_to_buffer(np.array(list(trip.passengers))))
+                passengers.append(list(trip.passengers))
                 points = [np.float64(b) for a in trip.locations_sec for b in a]
                 geometries.append(npfloat64_to_string(points)) #todo
                 vehicle_ids.append(trip.vehicle_id)
