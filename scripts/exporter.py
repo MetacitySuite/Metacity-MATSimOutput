@@ -9,7 +9,7 @@ import pandas as pd
 import network as net
 from agent import MHD, Car, Human
 
-OUTPUT_FORMAT = 'shp'
+OUTPUT_FORMAT = 'json'
 PARALLEL = True
 OUTPUT = "./../output/"
 CARS = "cars_only"
@@ -100,7 +100,6 @@ class Exporter:
         df = df.merge(self.network.set_index("link"), on='link', how="left").fillna(value=np.nan)
         if("coords_to" in df.columns):
             df = df.drop(columns=["coords_from", "coords_to"])
-        #display(df.head(2))
 
         df["coords_to"] = self.return_coords(df.coords_x, df.coords_y, df.x_to, df.y_to)
         df['coords_from'] = self.return_coords(df.coords_x,df.coords_y, df.x_from, df.y_from) 
@@ -244,7 +243,7 @@ class Exporter:
                 if(output_type == 'shp'):
                     output = output.append(a.geotrips.copy())
                 else:
-                    output.append(a.geotrips.copy())
+                    output.extend(a.geotrips)
         del a
 
         #save chunk
@@ -276,9 +275,6 @@ class Exporter:
 
 
     def parallel_run(self, files, proc, path_prefix, format):
-        #add transport to shared namespace
-        #m = Manager()
-        #nm = m.Namespace()
 
         args = list()
         for f in files:
