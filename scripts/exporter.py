@@ -239,10 +239,13 @@ class Exporter:
         
         for i,row in chunk.iterrows(): #for each agent in chunk
             a = self.prepare_agent(row,row.id, tp_map, verbal)
-            if a != None:
+            if not (a is None):
                 a.prepare_geotrips(output_type)
-                output = output.append(a.geotrips.copy())
-            del a
+                if(output_type == 'shp'):
+                    output = output.append(a.geotrips.copy())
+                else:
+                    output.append(a.geotrips.copy())
+        del a
 
         #save chunk
         if(output_type == 'shp' and not output.empty):
@@ -288,7 +291,7 @@ class Exporter:
         pool.join()
         
 
-    def export_agents(self, format = OUTPUT_FORMAT, parallel=PARALLEL, proc=4):
+    def export_agents(self, format = OUTPUT_FORMAT, parallel=PARALLEL, proc=os.cpu_count()):
         path_prefix = OUTPUT+'matsim_agents_'+str(format)+'/'+self.agent_type+'/'   
         if not os.path.exists(path_prefix):
             os.makedirs(path_prefix)

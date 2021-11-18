@@ -11,7 +11,8 @@ def npint32_to_buffer(data):
     return base64.b64encode(data.astype(np.int32)).decode('utf-8')
 
 def npfloat64_to_string(data):
-    return base64.b64encode(data.astype(np.float64)).decode('utf-8')
+    data = np.array(data, dtype=np.float64)
+    return base64.b64encode(data).decode('utf-8')
 
 # import
 def base64_to_type(b64data, type):
@@ -80,28 +81,29 @@ class MHD(Agent):
 
         elif(format == 'json'):
             for trip in self.trips:
-                start_times.append(np.int32(trip.start)) # int32
+                start_times.append(int(trip.start)) 
                 route_ids.append(trip.route_id) # id routy str
                 line_ids.append(trip.line_id) # id linky str
                 passengers.append(list(trip.passengers)) # as list of ints 32
-                points = [np.float64(b) for b in a for a in trip.locations_sec]
+                points = [np.float64(b) for a in trip.locations_sec for b in a]
                 geometries.append(npfloat64_to_string(points)) #todo
 
             trips_id = self.id
             meta = {}
             meta['id'] = trips_id
             meta['start'] = start_times
-            meta['passangers'] = passengers
+            meta['passengers'] = passengers
             meta['veh_type'] = self.type
             meta['route_id'] = route_ids
             meta['line_id'] = line_ids
 
-            agent_geotrips = pd.DataFrame(data={
+            agent_geotrips = {
                 'meta': meta,
                 'geometry': geometries,
-            })
+            }
 
         self.geotrips = agent_geotrips
+
 
     def extract_trips(self, verbal=False):
         self.trips =[]
@@ -202,13 +204,10 @@ class Car(Agent):
                 'metatype': "time_series"})
 
         elif(format == 'json'):
-
-            
-
             for trip in self.trips:
-                start_times.append(np.int32(trip.start))
+                start_times.append(int(trip.start))
                 passengers.append(npint32_to_buffer(np.array(list(trip.passengers))))
-                points = [np.float64(b) for b in a for a in trip.locations_sec]
+                points = [np.float64(b) for a in trip.locations_sec for b in a]
                 geometries.append(npfloat64_to_string(points)) #todo
 
             trips_id = self.id
@@ -217,15 +216,15 @@ class Car(Agent):
                 trips_id = "veh_"+str(self.id)+"_car"
 
             meta = {}
-            meta["passangers"] = trip.passangers
+            meta["passengers"] = trip.passengers
             meta["start"] = start_times
             meta["id"] = trips_id
             meta["veh_type"] = self.type
 
-            agent_geotrips = pd.DataFrame(data={
+            agent_geotrips = {
                 'meta' : meta,
                 'geometry': geometries
-                })
+                }
 
         self.geotrips = agent_geotrips
 
@@ -242,7 +241,7 @@ class Car(Agent):
             time = row.time
 
             #end and start trip  
-            if row.type == "PersonEntersVehicle": #1 passanger per car
+            if row.type == "PersonEntersVehicle": #1 passenger per car
                 #start new Trip
                 #print("Vehicle arrived at facility:", row.facility)
                 trip = Trip(time, old_passengers)
@@ -312,9 +311,9 @@ class Human(Agent):
         elif(format == 'json'):
 
             for trip in self.trips:
-                start_times.append(np.int32(trip.start))
+                start_times.append(int(trip.start))
                 passengers.append(npint32_to_buffer(np.array(list(trip.passengers))))
-                points = [np.float64(b) for b in a for a in trip.locations_sec]
+                points = [np.float64(b) for a in trip.locations_sec for b in a]
                 geometries.append(npfloat64_to_string(points)) #todo
                 vehicle_ids.append(trip.vehicle_id)
                 veh_types.append(trip.vehicle_id.split('_')[-1])
@@ -322,16 +321,16 @@ class Human(Agent):
             trips_id = self.id
 
             meta = {}
-            meta["passangers"] = trip.passangers
+            meta["passengers"] = trip.passengers
             meta["start"] = start_times
             meta["id"] = trips_id
             meta["veh_type"] = veh_types
             meta["vehicle_id"] = vehicle_ids
 
-            agent_geotrips = pd.DataFrame(data={
+            agent_geotrips = {
                 'meta' : meta,
                 'geometry': geometries
-                })
+                }
 
         #display(agent_geotrips)
         self.geotrips = agent_geotrips
