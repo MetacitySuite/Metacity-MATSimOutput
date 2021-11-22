@@ -9,12 +9,13 @@ import pandas as pd
 import network as net
 from agent import MHD, Car, Human
 
-OUTPUT_FORMAT = 'shp'
+OUTPUT_FORMAT = 'json'
 PARALLEL = True
 OUTPUT = "./../output/"
 CARS = "cars_only"
 ALL = "all_transport"
 ALL_WALK = "all_with_walk"
+
 
 class Exporter:
     def __init__(self, agent_type, network_path, export_mode):
@@ -24,18 +25,11 @@ class Exporter:
         if(self.agent_type == "agent"):
             if(self.export_mode == CARS):
                 self.transport_map = self.load_transport_map(['car'])
-            else: ##
+            else:
                 self.transport_map = self.load_transport_map()
         else:
             self.transport_map = {}
         
-
-    def count_agents(self):
-        self.events = pd.read_json(OUTPUT+"events/"+self.agent_type+".json") #memory hog
-        print("Loaded agents", self.agent_type,"#:", self.events.shape[0])
-        self.agent_count = self.events.shape[0]
-        del self.events
-        gc.collect()
     
 
     def load_network(self, network_path):
@@ -100,7 +94,6 @@ class Exporter:
         df = df.merge(self.network.set_index("link"), on='link', how="left").fillna(value=np.nan)
         if("coords_to" in df.columns):
             df = df.drop(columns=["coords_from", "coords_to"])
-        #display(df.head(2))
 
         df["coords_to"] = self.return_coords(df.coords_x, df.coords_y, df.x_to, df.y_to)
         df['coords_from'] = self.return_coords(df.coords_x,df.coords_y, df.x_from, df.y_from) 
@@ -120,7 +113,6 @@ class Exporter:
         for start,dest in zip(starts,ends):
             veh_events = veh_events.append(vehicle.iloc[np.where((vehicle["time"] >= start) & (vehicle["time"]<= dest))])
 
-        #delete chunk events
         return veh_events
 
 
@@ -152,6 +144,7 @@ class Exporter:
                 del veh_events
 
         del transport #!!!
+        
         df = df.append(events, ignore_index=True)
         del events
         gc.collect()
@@ -227,7 +220,7 @@ class Exporter:
         agent.set_events(v)
         #print("Memory (kB):",v.memory_usage(index=True).sum()/1000)
         del v
-        agent.extract_trips(verbal) #todo Human trips
+        agent.extract_trips(verbal)
         return agent
 
 
@@ -244,7 +237,7 @@ class Exporter:
                 if(output_type == 'shp'):
                     output = output.append(a.geotrips.copy())
                 else:
-                    output.append(a.geotrips.copy())
+                    output.extend(a.geotrips)
         del a
 
         #save chunk
@@ -255,7 +248,7 @@ class Exporter:
             output.to_file(filename=path)
 
         elif(output_type == "json"):
-            #print("implement (geo)json support")
+            #save list of agents to JSON
             with open(path, 'w') as f:
                 json.dump(output, f)
                 f.close()
@@ -276,9 +269,6 @@ class Exporter:
 
 
     def parallel_run(self, files, proc, path_prefix, format):
-        #add transport to shared namespace
-        #m = Manager()
-        #nm = m.Namespace()
 
         args = list()
         for f in files:

@@ -22,7 +22,32 @@ class Trip:
         print("\t:",len(self.locations),len(self.locations_sec))
 
 
+    def remove_location_duplicity(self):
+        new_locations = []
+        new_times = []
+        last_loc = [-1,-1]
+        last_time = -1
+    
+        for l,t in zip(self.locations, self.times):
+            is_close = np.isclose(l, last_loc, rtol=1e-05, atol=1e-08, equal_nan=False)
+            if(last_time == -1):
+                new_locations.append(l)
+                new_times.append(t)
+            elif last_time != -1 and (not (is_close[0] and is_close[1]) or (t > last_time)): 
+                #something changed
+                new_locations.append(l)
+                new_times.append(t)
+
+            last_loc = l
+            last_time = t
+
+        self.locations = new_locations
+        self.times = new_times
+
+
+
     def get_locations_by_second(self, show_trip = False): 
+        self.remove_location_duplicity()
         new_locations = []
         last_loc = [-1,-1]
         last_time = -1
@@ -33,16 +58,21 @@ class Trip:
                 new_locations.append(l)
             elif (np.isnan(l[0])):
                 continue
-            elif last_time != -1 and not (is_close[0] and is_close[1]) and  not (t == last_time): # time changed and place changed
+            elif last_time != -1 and not (is_close[0] and is_close[1]) and  not (t == last_time): 
+                # time changed and place changed
                 t_diff = int(t - last_time) #
                 i_x = ((l[0] - last_loc[0])/np.float64(t_diff))
                 i_y = ((l[1] - last_loc[1])/np.float64(t_diff))
-                # for each second of difference
+                # for each second of difference add a timespace point
                 new_locations.extend([ [last_loc[0] + t*i_x, last_loc[1]+ t*i_y] for t in range(0,t_diff+1)])
-            elif (is_close[0] and is_close[1]) and  not (t == last_time): # time changed but not place
+
+            elif (is_close[0] and is_close[1]) and  not (t == last_time): 
+                # time changed but not place
                 new_locations.extend([ [l[0],l[1]] for t in range(int(t - last_time))  ])
+
             last_loc = l
             last_time = t
+
 
         if(show_trip):
             G = nx.DiGraph() 
