@@ -16,6 +16,7 @@ CARS = "cars_only"
 ALL = "all_transport"
 ALL_WALK = "all_with_walk"
 
+
 class Exporter:
     def __init__(self, agent_type, network_path, export_mode):
         self.load_network(network_path)
@@ -24,18 +25,11 @@ class Exporter:
         if(self.agent_type == "agent"):
             if(self.export_mode == CARS):
                 self.transport_map = self.load_transport_map(['car'])
-            else: ##
+            else:
                 self.transport_map = self.load_transport_map()
         else:
             self.transport_map = {}
         
-
-    def count_agents(self):
-        self.events = pd.read_json(OUTPUT+"events/"+self.agent_type+".json") #memory hog
-        print("Loaded agents", self.agent_type,"#:", self.events.shape[0])
-        self.agent_count = self.events.shape[0]
-        del self.events
-        gc.collect()
     
 
     def load_network(self, network_path):
@@ -119,7 +113,6 @@ class Exporter:
         for start,dest in zip(starts,ends):
             veh_events = veh_events.append(vehicle.iloc[np.where((vehicle["time"] >= start) & (vehicle["time"]<= dest))])
 
-        #delete chunk events
         return veh_events
 
 
@@ -151,6 +144,7 @@ class Exporter:
                 del veh_events
 
         del transport #!!!
+        
         df = df.append(events, ignore_index=True)
         del events
         gc.collect()

@@ -34,7 +34,7 @@ class Agent:
 
     def set_events(self, events):
         events['type'] = pd.Categorical(events['type'], 
-                ["actstart","actend","VehicleArrivesAtFacility", "PersonLeavesVehicle","PersonEntersVehicle","VehicleDepartsAtFacility","entered_link"])
+                ["actstart","actend","VehicleArrivesAtFacility", "PersonLeavesVehicle","PersonEntersVehicle","VehicleDepartsAtFacility","entered_link", "TransitDriverStarts"])
         ##sort vehicle by time and type
         events = events.sort_values(["time","type"],kind="stable")
         self.events = events
@@ -122,13 +122,18 @@ class MHD(Agent):
         trip = Trip(-1, old_passengers)
 
         if(self.type != 'car' and self.type != "agent"):
-            trip_route = self.events.transitRoute.unique()[1]
-            #print(trip_route)
-            trip_line = self.events.transitLine.unique()[1]
-            #print(trip_line)
+            if(len(self.events.transitRoute.unique())<2):
+                print("No valid routes per transit agent",self.events.transitRoute.unique(), self.events.transitLine.unique())
+                #display(self.events)
+                trip_route = "Unknown"
+                trip_line = "Unknown"
+
+            else:
+                trip_route = self.events.transitRoute.unique()[1]
+                trip_line = self.events.transitLine.unique()[1]
             if(len(self.events.transitRoute.unique())>2):
-                print("more routes per agent",self.events.transitRoute.unique())
-        #print(self.events.transitRoute.unique())
+                print("more routes per transit agent",self.events.transitRoute.unique())
+        
         
         for e, row in self.events.iterrows():
             A = row.coords_from
