@@ -1,12 +1,22 @@
 import pandas as pd
 import numpy as np
 import os
+import shutil
 import json
 from multiprocessing import Pool
 
 INPUT_PATH = "./../output/agents/"
 OUTPUT_PATH = "./../output/events/"
-CHUNK_SIZE = 250
+CHUNK_SIZE = 500
+
+def clear_directory(directory):
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    else:
+        shutil.rmtree(directory)
+        os.makedirs(directory)
+
+
 
 class Chunker:
     def __init__(self, agents_path = INPUT_PATH, events_path = OUTPUT_PATH):
@@ -16,12 +26,13 @@ class Chunker:
 
 
     def __call__(self, chunk_size = CHUNK_SIZE):
+        clear_directory(self.output_path)
         for agent_type in self.folders:
             files = np.array(os.listdir(self.input_path+agent_type))
             transport_map = {}
 
             chunks_num = len(files) / chunk_size
-            if(len(files) % chunk_size> 0):
+            if(len(files) % chunk_size > 0):
                 chunks_num += 1
             file_chunks = np.array_split(files, chunks_num)
 

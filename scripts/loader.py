@@ -5,6 +5,7 @@ import os
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+import shutil
 import os
 
 from memory_profiler import profile
@@ -15,8 +16,7 @@ from multiprocessing import Pool
 
 XML = "../../pop10k-eh16-qsim4-100it/output_events.xml.gz"
 CSV = "./../output/population/"
-EVENTS = "./../output/events/"
-AGENTS = "./../output/agents/"
+
 
 events_dtypes = {
     "Unnamed: 0" : np.float64,
@@ -46,19 +46,38 @@ events_dtypes = {
 }
 
 
+def clear_directory(directory : str):
+    """
+    Creates directory if it does not exists and clears an existing directory.
+
+    Args:
+        directory (str): Path to directory.
+    """
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    else:
+        shutil.rmtree(directory)
+        os.makedirs(directory)
+
 
 class EventLoader:
 
-    def __init__(self, xml_path = XML, csv_path =  CSV, events_path = EVENTS, agents_path = AGENTS
-    ):
+    def __init__(self, xml_path = XML, csv_path =  CSV):
         if not os.path.exists(csv_path):
             os.makedirs(csv_path)
         self.xml_path = xml_path
         self.csv_path = csv_path 
-        self.events_path = events_path # exporter input
-        self.agents_path = agents_path # 
 
     def load_population_CSV(self, chunk_size=10e6, el_tag="event"):
+        """
+        Loads MATSim output_events.xml to separate CSV files for further porcessing.
+
+        Args:
+            chunk_size (int): Number of events in one CSV file.
+            el_tag (str): Name of XML tag to be extracted.
+        """
+        clear_directory(self.csv_path)
+    
         chunk_i=0
         dict_list = []
         elem_count = 0

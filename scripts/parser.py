@@ -4,8 +4,8 @@ import gzip
 import os
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 import os
+import shutil
 import json
 import warnings
 import gc
@@ -74,7 +74,7 @@ class Chunk:
             saved["events"].extend(self.events)
             with open(path+file, 'w') as f:
                 json.dump(saved,f)
-            #print("Appending events.")
+                           
         else:
             with open(path+file, 'w') as f:
                 if(os.path.getsize(path+file) == 0):
@@ -89,12 +89,7 @@ def load_agent_events(row):
     event["time"] = row["time"]
     event["type"] = row["type"]
     event["link"] = row["link"]
-    if(row["type"] == "stuckAndAbort"):
-        return event
-
     event["vehicle_id"] = row["vehicle"]
-    if(row["type"] == "PersonEntersVehicle"):
-        return event
     event["delay"] = row["delay"]
     event["actType"] = row["actType"]
     event["legMode"] = row["legMode"]
@@ -111,7 +106,8 @@ def load_vehicle_events(row, vehicle_type):
     event["person_id"] = row["person"]
     event["delay"] = row["delay"]
     event["facility"] = row['facility']
-    if isinstance(row['facility'],str): 
+
+    if isinstance(row['facility'],str):
         event['link'] = row['facility'].split(":")[-1]
     
     event["networkMode"] = row['networkMode']
@@ -120,7 +116,6 @@ def load_vehicle_events(row, vehicle_type):
     event["legMode"] = row["legMode"]
     event["coords_x"] = row["x"]
     event["coords_y"] = row["y"]
-    
 
     if(vehicle_type != "car"):
         if(event["type"] == "TransitDriverStarts"):
@@ -133,12 +128,8 @@ def load_vehicle_events(row, vehicle_type):
 
 
 class EventParser:
-
-    def __init__(self, csv_files, events_path = EVENTS, agents_path = AGENTS):
-        if not os.path.exists(events_path):
-            os.makedirs(events_path)
+    def __init__(self, csv_files, agents_path = AGENTS):
         self.csv_files = csv_files
-        self.events_path = events_path # exporter input
         self.agents_path = agents_path # 
 
     def __call__(self):
@@ -232,8 +223,20 @@ class EventParser:
         args = [[df,t] for df,t in zip(vehicle_dfs, vehicle_dfs_types)]
         return args
 
+    def clear_directory(self, directory):
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        else:
+            shutil.rmtree(directory)
+            os.makedirs(directory)
+
 
     def load_agents_from_population(self,path):
+
+        self.clear_directory(self.agents_path+"/agent")
+        for veh_type in vehicle_types:
+            self.clear_directory(self.agents_path+"/"+veh_type)
+        
         print("Loading file:", path)
         events = pd.read_csv(path, dtype=events_dtypes).fillna(np.nan)
     
