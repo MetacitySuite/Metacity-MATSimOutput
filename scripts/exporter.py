@@ -298,6 +298,7 @@ class Exporter:
             self.parallel_run(files, proc, path_prefix, format)
 
         else:
+            print("# files:", len(files))
             for file in files:
                 self.chunk_task([file,path_prefix,format, self.transport_map])
                 chunk_i +=1

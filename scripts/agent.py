@@ -122,8 +122,14 @@ class MHD(Agent):
         trip = Trip(-1, old_passengers)
 
         if(self.type != 'car' and self.type != "agent"):
-            if(len(self.events.transitRoute.unique())<2):
-                print("No valid routes per transit agent",self.events.transitRoute.unique(), self.events.transitLine.unique())
+            if("transitRoute" not in self.events.columns):
+                print("No routes per transit agent", self.id)
+                #display(self.events)
+                trip_route = "Unknown"
+                trip_line = "Unknown"
+
+            elif(len(self.events.transitRoute.unique())<2):
+                print("No valid routes per transit agent",self.events.transitRoute.unique(), self.events.transitLine.unique(), self.id)
                 #display(self.events)
                 trip_route = "Unknown"
                 trip_line = "Unknown"
@@ -131,9 +137,9 @@ class MHD(Agent):
             else:
                 trip_route = self.events.transitRoute.unique()[1]
                 trip_line = self.events.transitLine.unique()[1]
-            if(len(self.events.transitRoute.unique())>2):
-                print("more routes per transit agent",self.events.transitRoute.unique())
-        
+                if(len(self.events.transitRoute.unique())>2):
+                    print("more routes per transit agent",self.events.transitRoute.unique())
+
         
         for e, row in self.events.iterrows():
             A = row.coords_from
@@ -170,7 +176,10 @@ class MHD(Agent):
 
             elif row.type == "PersonLeavesVehicle":
                 if(str(row.person_id).isnumeric()):
-                    trip.remove_passenger(row.person_id)
+                    try:
+                        trip.remove_passenger(row.person_id)
+                    except KeyError:
+                        print("\tCould not remove passenger",row.person_id,"from", self.id, trip.passengers)
 
             #start trip
             elif in_station and (row.type == "VehicleDepartsAtFacility"):

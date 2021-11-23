@@ -64,18 +64,21 @@ class Chunk:
         }
     
     def save_chunk(self, path, file):
-        #check if exists
-        #print("saving chunk", file)
         if not os.path.exists(path):
             os.makedirs(path)
         #open load and append
-        with open(path+file, 'w') as f:
-            if(os.path.getsize(path+file) == 0):
-                json.dump(self.return_dict,f)
-            else:
+        if(os.path.isfile(path+file)):
+            with open(path+file, 'r') as f:
                 saved = json.load(f)
-                saved["events"].extend(self.events)
+
+            saved["events"].extend(self.events)
+            with open(path+file, 'w') as f:
                 json.dump(saved,f)
+            #print("Appending events.")
+        else:
+            with open(path+file, 'w') as f:
+                if(os.path.getsize(path+file) == 0):
+                    json.dump(self.return_dict,f)
         return
 
 
