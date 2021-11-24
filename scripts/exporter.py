@@ -1,4 +1,4 @@
-import os, sys, gc, shutil, json
+import os, gc, shutil, json
 from multiprocessing import Pool, Manager
 from memory_profiler import profile
 
@@ -116,7 +116,6 @@ class Exporter:
         return veh_events
 
 
-    #@profile
     def append_vehicles(self, df, agent_id, vehicle_ids, tp_map, verbal=False):
         events = pd.DataFrame()
         #load chunks for vehicle_ids to RAM
