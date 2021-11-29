@@ -20,6 +20,10 @@ import loader as csv_loader
 EVENTS = "./../output/events/"
 AGENTS = "./../output/agents/"
 
+vehicle_types = ["bus","car","funicular","subway", "tram"]
+vehicle_types = ["car"]
+
+
 events_dtypes = {
     "Unnamed: 0" : np.float64,
     "time": np.float64,
@@ -47,7 +51,7 @@ events_dtypes = {
     "atStop": str
 }
 
-vehicle_types = ["bus","car","funicular","subway", "tram"]
+
 
 class Chunk:
     def __init__(self, agent_id = "", events = []):
@@ -78,7 +82,7 @@ class Chunk:
         else:
             with open(path+file, 'w') as f:
                 if(os.path.getsize(path+file) == 0):
-                    json.dump(self.return_dict,f)
+                    json.dump(self.return_dict(),f)
         return
 
 
@@ -133,6 +137,10 @@ class EventParser:
         self.agents_path = agents_path # 
 
     def __call__(self):
+        self.clear_directory(self.agents_path+"/agent")
+        for veh_type in vehicle_types:
+            self.clear_directory(self.agents_path+"/"+veh_type)
+        
         for csv in self.csv_files:
             self.load_agents_from_population(csv)
 
@@ -167,13 +175,21 @@ class EventParser:
             events.append(load_vehicle_events(row, vehicle_type))
     
         chunk.append_events(events)
+        print("Saving:", vehicle_id)
         chunk.save_chunk(self.agents_path+"/"+vehicle_type,"/"+str(vehicle_id)+".json")
         return
     
     def save_vehicles_parallel(self, args, cpus):
         print("Number of vehicles in loaded chunk:", len(args))
-
+        if(len(args) < 1):
+            return
         print("processing:")
+        if(cpus == 1):
+            print("sequential")
+            for arg in args:
+                self.process_vehicle(arg)
+            return
+
         with Pool(cpus) as pool:
             pool.map(self.process_vehicle, args)
 
@@ -183,6 +199,8 @@ class EventParser:
 
     def save_agents_parallel(self, persons, cpus):
         print("Number of agents in loaded chunk:", len(persons))
+        if(len(persons) < 1):
+            return
         print("processing:")
         with Pool(cpus) as pool:
             pool.map(self.process_agent, persons)
@@ -232,11 +250,6 @@ class EventParser:
 
 
     def load_agents_from_population(self,path):
-
-        self.clear_directory(self.agents_path+"/agent")
-        for veh_type in vehicle_types:
-            self.clear_directory(self.agents_path+"/"+veh_type)
-        
         print("Loading file:", path)
         events = pd.read_csv(path, dtype=events_dtypes).fillna(np.nan)
     
@@ -256,16 +269,13 @@ class EventParser:
 
         total_agents = sum(agent_loads)
         cpu_available = os.cpu_count()
+        #cpu_available = 1
 
         del events
         gc.collect()
         self.save_vehicles_parallel(args, cpu_available)
         self.save_agents_parallel(dfs, cpu_available)
-
         return
-
-    
-
 
 
 

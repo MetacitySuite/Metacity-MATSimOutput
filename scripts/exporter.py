@@ -224,6 +224,8 @@ class Exporter:
 
 
     def extract_chunk(self, chunk, tp_map, output_type, path, verbal=False):
+        path = path + ".sim"
+        
         if(output_type == 'shp'):
             output = gpd.GeoDataFrame()
         else:
@@ -262,7 +264,7 @@ class Exporter:
         print("Loading:",chunk_path)
         chunk = pd.read_json(chunk_path, lines=True, orient='records')
         chunk_i = int(chunk_path.split('/')[-1].split('.')[0])
-        path =  path_prefix+self.agent_type+'_sec_'+str(chunk_i)+'.'+form
+        path =  path_prefix+self.agent_type+'_sec_'+str(chunk_i)
         self.extract_chunk(chunk, tp_map, output_type = form, path=path, verbal=False)
         print("Chunk saved to:",path)
 

@@ -27,13 +27,17 @@ class Chunker:
 
     def __call__(self, chunk_size = CHUNK_SIZE):
         clear_directory(self.output_path)
+        print(self.folders)
         for agent_type in self.folders:
             files = np.array(os.listdir(self.input_path+agent_type))
             transport_map = {}
+            print("# of files to chunk:", len(files))
 
-            chunks_num = len(files) / chunk_size
+            chunks_num = int(len(files) / chunk_size)
             if(len(files) % chunk_size > 0):
                 chunks_num += 1
+
+            print("# of chunks:", chunks_num)
             file_chunks = np.array_split(files, chunks_num)
 
             args = list()
