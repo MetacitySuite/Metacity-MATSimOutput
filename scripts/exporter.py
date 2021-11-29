@@ -30,7 +30,6 @@ class Exporter:
         else:
             self.transport_map = {}
         
-    
 
     def load_network(self, network_path):
         n = net.Network()
@@ -52,7 +51,7 @@ class Exporter:
     
 
 
-    def load_transport_chunks(slef, veh_ids, tp_map):
+    def load_transport_chunks(self, veh_ids, tp_map):
         #lookup map
         chunks_to_load = set()
         for v_id in veh_ids:
@@ -69,7 +68,6 @@ class Exporter:
             df = pd.concat([df,ch])
             df.sort_values("id", kind="stable", inplace=True)
             df.set_index("id", inplace=True)
-        #print("Transport loading finished.")
         return df
 
                 
@@ -180,6 +178,10 @@ class Exporter:
     def prepare_agent(self, row, agent_id, tp_map, verbal=False):
         #prep agent
         v = pd.DataFrame.from_dict(row["events"])
+        #display(row["events"])
+        #print(agent_id)
+        #print(v.columns)
+        #print(v.vehicle_id.unique())
 
         #join links and coordinates
         if self.agent_type == "agent":
@@ -219,6 +221,7 @@ class Exporter:
         agent.set_events(v)
         #print("Memory (kB):",v.memory_usage(index=True).sum()/1000)
         del v
+ 
         agent.extract_trips(verbal)
         return agent
 
@@ -296,6 +299,7 @@ class Exporter:
         files = [ dirc+"/"+f for f in os.listdir(dirc)]
         chunk_i = 0
         if(parallel):
+            proc = 4
             self.parallel_run(files, proc, path_prefix, format)
 
         else:

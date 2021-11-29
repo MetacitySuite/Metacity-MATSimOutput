@@ -147,15 +147,19 @@ class EventParser:
 
     def process_agent(self, person):
         agent_id = person.person.unique()[0]
+        #print(person.vehicle.unique())
         agent = person.sort_values("time")
         
-        events = []
+        agent_events = []
         chunk = Chunk(agent_id)
+        chunk.events = []
         for i, row in agent.iterrows():
-            events.append(load_agent_events(row))
+            agent_events.append(load_agent_events(row))
 
-        chunk.append_events(events)
+        chunk.events = agent_events
         chunk.save_chunk(self.agents_path+"/agent","/"+str(agent_id)+".json")
+        del chunk
+        gc.collect()
         return
 
 
@@ -170,13 +174,14 @@ class EventParser:
             vehicle_id = vehicle.vehicle.unique()[0]
     
         chunk = Chunk(vehicle_id)
-    
+        chunk.events = []
         for i, row in vehicle.iterrows():
             events.append(load_vehicle_events(row, vehicle_type))
     
         chunk.append_events(events)
-        print("Saving:", vehicle_id)
         chunk.save_chunk(self.agents_path+"/"+vehicle_type,"/"+str(vehicle_id)+".json")
+        del chunk
+        gc.collect()
         return
     
     def save_vehicles_parallel(self, args, cpus):
@@ -224,6 +229,7 @@ class EventParser:
         for veh_type in vehicle_types:
             print("\t Grouping",veh_type,":")
             vehicles = pd.DataFrame()
+
             if veh_type == 'car':
                 vehicles = events[pd.to_numeric(events['vehicle'], errors='coerce').notnull()]
             else:
@@ -232,7 +238,6 @@ class EventParser:
                 driver_events['vehicle'] = driver_events['vehicleId']
                 vehicles = vehicles.append(driver_events)
 
-
             vehs = [x for _, x in vehicles.groupby("vehicle")]
             vehicle_dfs.extend(vehs)
             vehicle_dfs_types.extend([veh_type]*len(vehs))
@@ -240,6 +245,7 @@ class EventParser:
             
         args = [[df,t] for df,t in zip(vehicle_dfs, vehicle_dfs_types)]
         return args
+
 
     def clear_directory(self, directory):
         if not os.path.exists(directory):
