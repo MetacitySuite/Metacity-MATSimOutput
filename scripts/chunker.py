@@ -32,32 +32,32 @@ class Chunker:
             files = np.array(os.listdir(self.input_path+agent_type))
             transport_map = {}
             print("# of files to chunk:", len(files))
-
-            chunks_num = int(len(files) / chunk_size)
-            if(len(files) % chunk_size > 0):
-                chunks_num += 1
-
-            print("# of chunks:", chunks_num)
-            file_chunks = np.array_split(files, chunks_num)
-
-            args = list()
-            for i,f in enumerate(file_chunks):
-                args.append([self.input_path+agent_type+"/",f,i, agent_type])
-
-
-            with Pool(int(min(chunks_num, os.cpu_count()))) as pool:
-                results = pool.map(self.concat_files, args)
-
-            pool.close()
-            pool.join()
-
-            if(agent_type != "agent"):
-                # concat results
-                for r in results:
-                    transport_map.update(r)
-                # save transport map
-                with open(self.output_path+agent_type+'_map.json', 'w') as f:
-                    json.dump(transport_map,f)
+            if(len(files) > 0):
+                chunks_num = int(len(files) / chunk_size)
+                if(len(files) % chunk_size > 0):
+                    chunks_num += 1
+    
+                print("# of chunks:", chunks_num)
+                file_chunks = np.array_split(files, chunks_num)
+    
+                args = list()
+                for i,f in enumerate(file_chunks):
+                    args.append([self.input_path+agent_type+"/",f,i, agent_type])
+    
+    
+                with Pool(int(min(chunks_num, os.cpu_count()))) as pool:
+                    results = pool.map(self.concat_files, args)
+    
+                pool.close()
+                pool.join()
+    
+                if(agent_type != "agent"):
+                    # concat results
+                    for r in results:
+                        transport_map.update(r)
+                    # save transport map
+                    with open(self.output_path+agent_type+'_map.json', 'w') as f:
+                        json.dump(transport_map,f)
 
 
     def concat_files(self, args):

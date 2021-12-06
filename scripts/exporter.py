@@ -26,7 +26,7 @@ class Exporter:
             if(self.export_mode == CARS):
                 self.transport_map = self.load_transport_map(['car'])
             else:
-                self.transport_map = self.load_transport_map()
+                self.transport_map = self.load_transport_map(["bus","car","funicular","subway", "tram"])
         else:
             self.transport_map = {}
         
@@ -178,10 +178,6 @@ class Exporter:
     def prepare_agent(self, row, agent_id, tp_map, verbal=False):
         #prep agent
         v = pd.DataFrame.from_dict(row["events"])
-        #display(row["events"])
-        #print(agent_id)
-        #print(v.columns)
-        #print(v.vehicle_id.unique())
 
         #join links and coordinates
         if self.agent_type == "agent":
@@ -192,6 +188,7 @@ class Exporter:
             return None
 
         v = self.link_network(v)
+        
         #remove unused event types
         drop_idx = v[
             (v['type'] == "vehicle leaves traffic") | 
@@ -299,7 +296,6 @@ class Exporter:
         files = [ dirc+"/"+f for f in os.listdir(dirc)]
         chunk_i = 0
         if(parallel):
-            proc = 4
             self.parallel_run(files, proc, path_prefix, format)
 
         else:

@@ -1,6 +1,4 @@
 import pandas as pd
-import xml.etree.ElementTree as ET
-import gzip
 import os
 import numpy as np
 import pandas as pd
@@ -9,10 +7,7 @@ import shutil
 import json
 import warnings
 import gc
-from memory_profiler import profile
 from multiprocessing import Pool
-
-import loader as csv_loader
 
 #pd.set_option('display.max_columns', None)
 #warnings.filterwarnings('ignore')
@@ -21,7 +16,7 @@ EVENTS = "./../output/events/"
 AGENTS = "./../output/agents/"
 
 vehicle_types = ["bus","car","funicular","subway", "tram"]
-vehicle_types = ["car"]
+#vehicle_types = ["car"]
 
 
 events_dtypes = {
@@ -235,7 +230,8 @@ class EventParser:
             else:
                 vehicles = events.loc[events['vehicle'].str.contains(veh_type, case=False)]
                 driver_events = events[events['vehicleId'].notnull() & events['vehicleId'].str.contains(veh_type, case=False)]
-                driver_events['vehicle'] = driver_events['vehicleId']
+                driver_events.loc[:, "vehicle"] = driver_events.vehicleId
+                driver_events.drop(["vehicleId"], axis=1, inplace=True)
                 vehicles = vehicles.append(driver_events)
 
             vehs = [x for _, x in vehicles.groupby("vehicle")]
@@ -273,9 +269,7 @@ class EventParser:
         args = self.load_vehicles(events)
         agent_loads.append(len(args))
 
-        total_agents = sum(agent_loads)
         cpu_available = os.cpu_count()
-        #cpu_available = 1
 
         del events
         gc.collect()
