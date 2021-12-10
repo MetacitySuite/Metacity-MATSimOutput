@@ -5,8 +5,8 @@ import shutil
 import json
 from multiprocessing import Pool
 
-INPUT_PATH = "./../output/agents/"
-OUTPUT_PATH = "./../output/events/"
+INPUT_PATH = "./output/agents/"
+OUTPUT_PATH = "./output/events/"
 CHUNK_SIZE = 500
 
 def clear_directory(directory):

@@ -6,14 +6,15 @@ import os
 import shutil
 import json
 import warnings
+from tqdm import tqdm
 import gc
 from multiprocessing import Pool
 
 #pd.set_option('display.max_columns', None)
 #warnings.filterwarnings('ignore')
 
-EVENTS = "./../output/events/"
-AGENTS = "./../output/agents/"
+EVENTS = "./output/events/"
+AGENTS = "./output/agents/"
 
 vehicle_types = ["bus","car","funicular","subway", "tram"]
 #vehicle_types = ["car"]
@@ -45,6 +46,18 @@ events_dtypes = {
     "agent": str,
     "atStop": str
 }
+
+new_columns_pt = ["events_id","time","vehicle","type","link","person_id","delay","facility","networkMode"
+                ,"actType","legMode","vehicle_id","coords_x","coords_y","relativePosition","transitLine",
+                "transitRoute","departure","atStop","destinationStop"]
+
+new_columns_car = ["events_id","time","vehicle","type","link","person_id","delay","facility","networkMode"
+                ,"actType","legMode","vehicle_id","coords_x","coords_y","relativePosition"]
+
+def return_link(facility, link):
+    if (isinstance(facility, str)):
+        return facility.split(':')[-1]
+    return link
 
 
 
@@ -142,16 +155,11 @@ class EventParser:
 
     def process_agent(self, person):
         agent_id = person.person.unique()[0]
-        #print(person.vehicle.unique())
         agent = person.sort_values("time")
-        
-        agent_events = []
+
         chunk = Chunk(agent_id)
         chunk.events = []
-        for i, row in agent.iterrows():
-            agent_events.append(load_agent_events(row))
-
-        chunk.events = agent_events
+        chunk.events = agent.to_dict('records')
         chunk.save_chunk(self.agents_path+"/agent","/"+str(agent_id)+".json")
         del chunk
         gc.collect()
@@ -160,8 +168,7 @@ class EventParser:
 
     def process_vehicle(self, args):
         vehicle_df, vehicle_type = args
-        vehicle = vehicle_df.sort_values("time")
-        events = []
+        vehicle = vehicle_df.sort_values("time") #prepped for linking
         
         if(vehicle_type == "car"):
             vehicle_id = int(vehicle.vehicle.unique()[0])
@@ -170,10 +177,7 @@ class EventParser:
     
         chunk = Chunk(vehicle_id)
         chunk.events = []
-        for i, row in vehicle.iterrows():
-            events.append(load_vehicle_events(row, vehicle_type))
-    
-        chunk.append_events(events)
+        chunk.events = vehicle.to_dict('records')
         chunk.save_chunk(self.agents_path+"/"+vehicle_type,"/"+str(vehicle_id)+".json")
         del chunk
         gc.collect()
@@ -191,10 +195,11 @@ class EventParser:
             return
 
         with Pool(cpus) as pool:
-            pool.map(self.process_vehicle, args)
+            pool.map(self.process_vehicle, tqdm(args))
 
         pool.close()
         pool.join()
+        del args
         return
 
     def save_agents_parallel(self, persons, cpus):
@@ -202,20 +207,28 @@ class EventParser:
         if(len(persons) < 1):
             return
         print("processing:")
+
         with Pool(cpus) as pool:
-            pool.map(self.process_agent, persons)
+            pool.map(self.process_agent, tqdm(persons))
 
         pool.close()
         pool.join()
+        del persons
         return
 
     def load_agents(self, events):
         agents = pd.DataFrame()
-        # removes drivers
+        # remove drivers
         agents =  events[pd.to_numeric(events['person'], errors='coerce').notnull()] 
-        dfs = [x for _, x in agents.groupby("person")] #each person in own dataframe
+        #rename columns and drop unused
+        agents = agents.rename(columns={0:"events_id","vehicle":"vehicle_id","x":"coords_x","y":"coords_y"})
+        new_columns = ["events_id","time","person","type","link","delay","actType","legMode","vehicle_id","coords_x","coords_y"]
+        old_columns = agents.columns
+        agents = agents.drop((set(old_columns) - set(new_columns)),axis=1)
+        dfs = [x for _, x in agents.groupby("person", sort=False)] #each person in own dataframe
         del agents
         gc.collect()
+
         return dfs
 
     def load_vehicles(self, events):
@@ -230,14 +243,30 @@ class EventParser:
             else:
                 vehicles = events.loc[events['vehicle'].str.contains(veh_type, case=False)]
                 driver_events = events[events['vehicleId'].notnull() & events['vehicleId'].str.contains(veh_type, case=False)]
-                driver_events.loc[:, "vehicle"] = driver_events.vehicleId
+                driver_events.loc[:, "vehicle"] = driver_events.vehicleId.values
                 driver_events.drop(["vehicleId"], axis=1, inplace=True)
-                vehicles = vehicles.append(driver_events)
+                vehicles = vehicles.append(driver_events, ignore_index=True, verify_integrity=True)
 
-            vehs = [x for _, x in vehicles.groupby("vehicle")]
+
+            if(veh_type == "car"):
+                vehicles = vehicles.rename(columns={0:"events_id","person":"person_id",
+                                    "x":"coords_x","y":"coords_y"})
+                old_columns = vehicles.columns
+                vehicles = vehicles.drop((set(old_columns) - set(new_columns_car)),axis=1)
+            else:
+                vehicles = vehicles.rename(columns={0:"events_id","person":"person_id",
+                                    "x":"coords_x","y":"coords_y","transitLineId":"transitLine",
+                                    "transitRouteId":"transitRoute","departureId":"departure"})
+                old_columns = vehicles.columns
+                vehicles.drop((set(old_columns) - set(new_columns_pt)),axis=1)
+                
+                vehicles.loc[:,"link"] = vehicles.apply(lambda row: return_link(row.facility, row.link),axis=1)
+
+            vehs = [x for _, x in vehicles.groupby("vehicle", sort=False)]
+            v_len = len(vehs)
             vehicle_dfs.extend(vehs)
-            vehicle_dfs_types.extend([veh_type]*len(vehs))
-            print("\t",veh_type,"# ",len(vehs))
+            vehicle_dfs_types.extend([veh_type]*v_len)
+            print("\t",veh_type,"# ",v_len)
             
         args = [[df,t] for df,t in zip(vehicle_dfs, vehicle_dfs_types)]
         return args
@@ -259,9 +288,10 @@ class EventParser:
 
         print("Parsing events:")
         print("\t Grouping agents:")
+        
         dfs = self.load_agents(events)
 
-        print("\t agents # ",len(dfs))
+        print("\t people # ",len(dfs))
         agent_loads.append(len(dfs))
 
         events.vehicle = events.vehicle.astype("string")
@@ -273,8 +303,10 @@ class EventParser:
 
         del events
         gc.collect()
-        self.save_vehicles_parallel(args, cpu_available)
         self.save_agents_parallel(dfs, cpu_available)
+
+        self.save_vehicles_parallel(args, cpu_available)
+        
         return
 
 

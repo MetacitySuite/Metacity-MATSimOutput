@@ -1,5 +1,6 @@
 import pandas as pd
 import xml.etree.ElementTree as ET
+from lxml import etree
 import gzip
 import os
 import numpy as np
@@ -14,8 +15,8 @@ from multiprocessing import Pool
 #pd.set_option('display.max_columns', None)
 #warnings.filterwarnings('ignore')
 
-XML = "../../pop10k-eh16-qsim4-100it/output_events.xml.gz"
-CSV = "./../output/population/"
+XML = "../pop10k-eh16-qsim4-100it/output_events.xml.gz"
+CSV = "./output/population/"
 
 
 events_dtypes = {
@@ -87,6 +88,7 @@ class EventLoader:
         else: source = self.xml_path
 
         for _, elem in ET.iterparse(source, events=("end",)):
+        #for _, elem in tqdm(etree.iterparse(source, tag=el_tag)):
             if elem.tag == el_tag:
                 dict_list.append(elem.attrib)      #PARSE ALL ATTRIBUTES
                 elem.clear()
@@ -94,6 +96,7 @@ class EventLoader:
 
             if(elem_count % chunk_size == 0):
                 df = pd.DataFrame(dict_list)
+                print("Rows in file:",df.shape[0])
                 dict_list = []
                 df.to_csv(self.csv_path+str(chunk_i)+".csv")
                 del df
@@ -101,6 +104,7 @@ class EventLoader:
 
         #print("Saving chunk:", chunk_i)
         df = pd.DataFrame(dict_list)
+        print("Rows in file:",df.shape[0])
         df.to_csv(self.csv_path+str(chunk_i)+".csv")
         print("CSV files saved to:", self.csv_path, chunk_i+1,"files")
         return
@@ -108,7 +112,7 @@ class EventLoader:
     def read_csv(self, path):
         return pd.read_csv(path, dtype=events_dtypes)
 
-    def gather_CSV_files(self):
+    def gather_csv_files(self):
         csv_files = list()
 
         for csv in os.listdir(self.csv_path):
@@ -116,11 +120,4 @@ class EventLoader:
 
         print("Files prepared:", len(csv_files), "files")
         return csv_files
-
-
-
-
-
-
-
 

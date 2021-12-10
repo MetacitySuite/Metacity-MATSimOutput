@@ -1,27 +1,32 @@
 import os, gc, shutil, json
-from multiprocessing import Pool, Manager
+from multiprocessing import Pool
+from tqdm import tqdm
 from memory_profiler import profile
 
 import geopandas as gpd
+from pyproj import Proj, transform
 import numpy as np
 import pandas as pd
+pd.options.mode.chained_assignment = None
 
 import network as net
 from agent import MHD, Car, Human
 
 OUTPUT_FORMAT = 'json'
 PARALLEL = True
-OUTPUT = "./../output/"
+OUTPUT = "./output/"
 CARS = "cars_only"
 ALL = "all_transport"
 ALL_WALK = "all_with_walk"
 
 
 class Exporter:
-    def __init__(self, agent_type, network_path, export_mode):
+    def __init__(self, agent_type, network_path, export_mode, gtfs_path):
         self.load_network(network_path)
+        self.load_facility_map(gtfs_path)
         self.agent_type = agent_type
         self.export_mode = export_mode
+        
         if(self.agent_type == "agent"):
             if(self.export_mode == CARS):
                 self.transport_map = self.load_transport_map(['car'])
@@ -39,6 +44,7 @@ class Exporter:
         n.join_network()
         n.status()
         self.network = n.return_network()
+        self.network = self.network.set_index("link")
         print("Memory (kB):",self.network.memory_usage(index=True).sum()/1000)
         
 
@@ -48,11 +54,16 @@ class Exporter:
                                 else [-float(a), -float(b)] 
                                 for x,y,a,b in zip(coords_x, coords_y, i_x, i_y)]
         return new_coords
+
+    def return_coord(self, coord_x, coord_y, i_x, i_y):
+        if not np.isnan(coord_x):
+            return [-float(coord_x), - float(coord_y)] # return EPSG 5514
+        else:
+            return [-float(i_x), -float(i_y)] 
     
 
 
     def load_transport_chunks(self, veh_ids, tp_map):
-        #lookup map
         chunks_to_load = set()
         for v_id in veh_ids:
             if v_id is not None:
@@ -63,11 +74,13 @@ class Exporter:
                     chunks_to_load.add(tp_map[veh_type][v_id])
 
         df = pd.DataFrame()
+        chunks = []
         for file in chunks_to_load:
             ch = pd.read_json(file, lines=True, orient='records')
-            df = pd.concat([df,ch])
-            df.sort_values("id", kind="stable", inplace=True)
-            df.set_index("id", inplace=True)
+            chunks.append(ch)
+        df = pd.concat(chunks)
+        df.sort_values("id", kind="stable", inplace=True)
+        df.set_index("id", inplace=True)
         return df
 
                 
@@ -87,19 +100,37 @@ class Exporter:
         return transport_map
 
 
-    def link_network(self, df):
-        #join links and coordinates
-        df = df.merge(self.network.set_index("link"), on='link', how="left").fillna(value=np.nan)
+    def link_network(self, df_v):
+        df = df_v.merge(self.network, left_on='link', right_index=True, how="left")
+        df = df.fillna(value=np.nan)
         if("coords_to" in df.columns):
             df = df.drop(columns=["coords_from", "coords_to"])
 
-        df["coords_to"] = self.return_coords(df.coords_x, df.coords_y, df.x_to, df.y_to)
-        df['coords_from'] = self.return_coords(df.coords_x,df.coords_y, df.x_from, df.y_from) 
+        df.loc[:,"coords_to"] = df.apply(lambda row: self.return_coord(row.coords_x, row.coords_y, row.x_to, row.y_to),axis=1)#self.return_coords(df.coords_x, df.coords_y, df.x_to, df.y_to)
+        df.loc[:,'coords_from'] = df.apply(lambda row: self.return_coord(row.coords_x, row.coords_y, row.x_from, row.y_from),axis=1)#self.return_coords(df.coords_x,df.coords_y, df.x_from, df.y_from) 
         return df
+
+    def load_facility_map(self, path):
+        facilities = pd.read_csv(path+"/stops.txt",delimiter=',')
+        #print(facilities.head())
+        inProj, outProj = Proj(init='epsg:4326'), Proj(init='epsg:5514')
+        facilities.loc[:,'x'], facilities.loc[:,'y'] = transform(inProj, outProj, facilities['stop_lon'].tolist(), facilities['stop_lat'].tolist())
+        print(facilities.head())
+        self.facilities = facilities[["stop_id","stop_name","x","y"]]
+
+    def link_facility_coords(self, df_v):
+        #TODO
+        print(df_v.columns)
+        df_v[~df_v.facility.isna()].facility = df_v[~df_v.facility.isna()].facility.apply(lambda x: x.split('.')[0])
+        df_v[~df_v.facility.isna()].loc[:,"coords_x"] = df_v[~df_v.facility.isna()].merge(self.facilities, left_on="facility", right_on="stop_id", how="left").x.values
+        df_v[~df_v.facility.isna()].loc[:,"coords_y"] = df_v[~df_v.facility.isna()].merge(self.facilities, left_on="facility", right_on="stop_id", how="left").y.values
+        print(df_v[~df_v.facility.isna()][["facility","coords_x","coords_y"]])
+        print(df_v.facility.unique())
+        pass
 
 
     def pick_vehicle_events(self, df, v_id, transport):
-        veh_events = pd.DataFrame()
+        veh_events = []
 
         veh_row = transport.loc[int(v_id)]
         vehicle = pd.DataFrame.from_dict(veh_row["events"])
@@ -109,13 +140,15 @@ class Exporter:
 
         vehicle["vehicle_id"] = v_id
         for start,dest in zip(starts,ends):
-            veh_events = veh_events.append(vehicle.iloc[np.where((vehicle["time"] >= start) & (vehicle["time"]<= dest))])
+            veh_events.append(vehicle.iloc[np.where((vehicle["time"] >= start) & (vehicle["time"]<= dest))])
 
-        return veh_events
+        if(len(veh_events)>1):
+            return pd.concat(veh_events)
+        return veh_events[0]
 
 
     def append_vehicles(self, df, agent_id, vehicle_ids, tp_map, verbal=False):
-        events = pd.DataFrame()
+        events = []
         #load chunks for vehicle_ids to RAM
         transport = self.load_transport_chunks(vehicle_ids, tp_map)
         for v_id in vehicle_ids:
@@ -137,19 +170,24 @@ class Exporter:
                                 ].index      
                     veh_events.drop(drop_idx, inplace=True)
 
-                events = events.append(veh_events)
+                events.append(veh_events)
                 del veh_events
 
         del transport #!!!
         
+        if(len(events)>1):
+            events = pd.concat(events)
+        else:
+            events = events[0]
         df = df.append(events, ignore_index=True)
         del events
         gc.collect()
-        df = df.sort_values(["time"], kind="stable") #, "type"
+        df = df.sort_values(["time"], kind="stable")
         df.reset_index(inplace=True)
         if("index" in df.columns):
             df.drop(columns=["index"], inplace=True)
         return df
+
 
     def other_transport(self, vehicle_ids):
         #check if vehicle_ids contains other transport than cars
@@ -183,6 +221,8 @@ class Exporter:
         if self.agent_type == "agent":
             v = self.link_transport(v, agent_id, tp_map) 
 
+        
+
         if(v.empty):
             del v
             return None
@@ -197,26 +237,25 @@ class Exporter:
             ].index
         v.drop(drop_idx, inplace=True)
 
-        cols = ["from","to","length","event_id",
+        unused_columns = ["from","to","length","event_id",
         "permlanes",'link_modes','atStop','destinationStop',
-        'departure','networkMode','legMode','relativePosition']
+        'departure','networkMode','legMode','relativePosition', 
+        'Unnamed: 0', 'oneway', 'driverId']
 
-        to_del = []
-        for col in cols:
-            if(col in v.columns):
-                to_del.append(col)
-
-        v.drop(to_del, axis=1, inplace=True)
+        to_keep = list(set(v.columns).difference(set(unused_columns)))
+        to_drop = list(set(v.columns) - set(to_keep))
+        v.drop(to_drop,axis=1, inplace=True)
             
         if(self.agent_type == "car"):
             agent = Car(self.agent_type, agent_id)
         elif(self.agent_type == "agent"):
             agent = Human(self.agent_type, agent_id)
         else:
+            #append facilities
+            self.link_facility_coords(v)
             agent = MHD(self.agent_type, agent_id)
-        
+
         agent.set_events(v)
-        #print("Memory (kB):",v.memory_usage(index=True).sum()/1000)
         del v
  
         agent.extract_trips(verbal)
@@ -242,18 +281,22 @@ class Exporter:
         del a
 
         #save chunk
+        print("Chunk is prepared:", len(output))
         if(output_type == 'shp' and not output.empty):
+            print("shp output")
             #reset trip_index
             output.reset_index(inplace=True)
             #save GeoDataFrame as .SHP
             output.to_file(filename=path)
 
-        elif(output_type == "json"):
+        elif(output_type == "json" and len(output)>0):
             #save list of agents to JSON
+            print("Saving output in json type:", len(output))
             with open(path, 'w') as f:
                 json.dump(output, f)
                 f.close()
-
+        else:
+            print("Unknown output type or no trips in chunk.")
         del output
         del chunk
         gc.collect()
@@ -270,7 +313,6 @@ class Exporter:
 
 
     def parallel_run(self, files, proc, path_prefix, format):
-
         args = list()
         for f in files:
             args.append([f, path_prefix, format, self.transport_map])
@@ -290,19 +332,15 @@ class Exporter:
             shutil.rmtree(path_prefix)
             os.makedirs(path_prefix)
             
-        print("Saving to:", path_prefix, os.path.exists(path_prefix))
-
+        print("Saving output to:", path_prefix, os.path.exists(path_prefix))
         dirc = OUTPUT+"events/"+self.agent_type
         files = [ dirc+"/"+f for f in os.listdir(dirc)]
-        chunk_i = 0
+
         if(parallel):
             self.parallel_run(files, proc, path_prefix, format)
-
         else:
-            print("# files:", len(files))
-            for file in files:
+            for file in tqdm(files):
                 self.chunk_task([file,path_prefix,format, self.transport_map])
-                chunk_i +=1
         return
         
 
