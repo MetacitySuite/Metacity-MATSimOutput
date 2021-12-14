@@ -83,17 +83,17 @@ class Agent:
         elif(format == 'json'):
             agent_geotrips = []
             passenger_count = 0
-            print("trips", len(self.trips))
-            if(len(self.trips) == 0):
+            if(len(self.trips) == 0 and self.type == "bus"):
                 self.geotrips = []
-            else:
-                print("Passengers in vehicle", self.type)
+                #print("No passengers entered this vehicle, not exporting geotrips:", self.id)
+                return
+
+            #else:
+            #    print("Passengers in vehicle", self.type, "or vehicle type is not bus.")
 
             for trip in self.trips:
                 meta = {}
-                meta["passengers"] = list(map(int, list(trip.passengers)))
-                passenger_count += len(meta["passengers"])
-                
+                meta["passengers"] = [int(p) for p in list(trip.passengers)]
                 meta["start"] = int(trip.start)
                 meta["id"] = trips_id
                 if(self.type == "agent"):
@@ -223,6 +223,7 @@ class MHD(Agent):
 
         old_passengers = set()
         trip = Trip(-1, old_passengers)
+        trip_order = 0
 
         if(self.type != 'car' and self.type != "agent"):
             if("transitRoute" not in self.events.columns):
@@ -259,10 +260,11 @@ class MHD(Agent):
                     #trip.destination = str(row.facility) unused
                     trip.get_locations_by_second()
                     self.trips.append(trip)
-                    old_passengers = trip.passengers
+                    old_passengers = trip.passengers.copy()
 
                 #start new Trip
-                trip = Trip(time, old_passengers)
+                trip = Trip(time, old_passengers.copy())
+                trip_order+=1
                 trip.route_id = trip_route
                 trip.line_id = trip_line
                 trip.append_time(time)
@@ -274,15 +276,17 @@ class MHD(Agent):
         
                 if two_interactions and str(row.person_id).isnumeric():
                     trip.add_passenger(row.person_id)
+                    #print("Added passenger", trip_order,trip.passengers)
                     added += 1
                 elif str(row.person_id).isnumeric():
                     stuck += 1
-                    print("Passenger:", row.person_id,"does not leave vehicle.")
+                    #print("Passenger:", row.person_id,"does not leave vehicle.")
 
             elif row.type == "PersonLeavesVehicle":
                 if(str(row.person_id).isnumeric()):
                     try:
                         trip.remove_passenger(row.person_id)
+                        #print("Removed passenger", trip_order,trip.passengers)
                     except KeyError:
                         print("\tCould not remove passenger",row.person_id,"from", self.id, trip.passengers)
 
@@ -298,8 +302,8 @@ class MHD(Agent):
                 print("Vehicle is not in station and there are changes in passenger list",
                 row.type, row.person_id, row.time)
 
-        print("Passangers in vehicle", added,"vs passengers stuck",stuck)
-        if(added == 0):
+        #print("Passengers in vehicle", added,"vs passengers stuck",stuck)
+        if(added == 0 and self.type == "bus"):
             self.trips = []
 
         

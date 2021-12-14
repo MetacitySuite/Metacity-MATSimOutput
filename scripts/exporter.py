@@ -252,7 +252,7 @@ class Exporter:
             agent = Human(self.agent_type, agent_id)
         else:
             #append facilities
-            self.link_facility_coords(v)
+            #self.link_facility_coords(v)
             agent = MHD(self.agent_type, agent_id)
 
         agent.set_events(v)
