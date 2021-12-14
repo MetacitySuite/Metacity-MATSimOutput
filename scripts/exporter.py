@@ -20,6 +20,15 @@ ALL = "all_transport"
 ALL_WALK = "all_with_walk"
 
 
+def get_facility_code(x):
+    if(x == np.nan):
+        return x
+    
+    print(x)
+    return str(x).split('.')[0]
+    
+
+
 class Exporter:
     def __init__(self, agent_type, network_path, export_mode, gtfs_path):
         self.load_network(network_path)
@@ -115,18 +124,17 @@ class Exporter:
         #print(facilities.head())
         inProj, outProj = Proj(init='epsg:4326'), Proj(init='epsg:5514')
         facilities.loc[:,'x'], facilities.loc[:,'y'] = transform(inProj, outProj, facilities['stop_lon'].tolist(), facilities['stop_lat'].tolist())
-        print(facilities.head())
+        print(facilities[["stop_id","stop_name","x","y"]].head())
         self.facilities = facilities[["stop_id","stop_name","x","y"]]
 
     def link_facility_coords(self, df_v):
         #TODO
-        print(df_v.columns)
-        df_v[~df_v.facility.isna()].facility = df_v[~df_v.facility.isna()].facility.apply(lambda x: x.split('.')[0])
-        df_v[~df_v.facility.isna()].loc[:,"coords_x"] = df_v[~df_v.facility.isna()].merge(self.facilities, left_on="facility", right_on="stop_id", how="left").x.values
-        df_v[~df_v.facility.isna()].loc[:,"coords_y"] = df_v[~df_v.facility.isna()].merge(self.facilities, left_on="facility", right_on="stop_id", how="left").y.values
-        print(df_v[~df_v.facility.isna()][["facility","coords_x","coords_y"]])
-        print(df_v.facility.unique())
-        pass
+        df_v.loc[:,"facility"] = df_v.facility.apply(lambda x: str(x).split('.')[0])
+        df_merged = df_v.merge(self.facilities, left_on="facility", right_on="stop_id", how="left")
+        df_v.loc[:,"coords_x"] = df_merged.x.values
+        df_v.loc[:,"coords_y"] = df_merged.y.values
+        return df_v
+        
 
 
     def pick_vehicle_events(self, df, v_id, transport):
@@ -252,7 +260,7 @@ class Exporter:
             agent = Human(self.agent_type, agent_id)
         else:
             #append facilities
-            #self.link_facility_coords(v)
+            v = self.link_facility_coords(v)
             agent = MHD(self.agent_type, agent_id)
 
         agent.set_events(v)

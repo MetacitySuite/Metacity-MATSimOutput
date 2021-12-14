@@ -217,6 +217,7 @@ class MHD(Agent):
     def extract_trips(self, verbal=False):
         self.trips =[]
         in_station = False
+        left_station = False
         added = 0
         stuck = 0
         
@@ -224,6 +225,8 @@ class MHD(Agent):
         old_passengers = set()
         trip = Trip(-1, old_passengers)
         trip_order = 0
+
+        #print(self.events.head(20))
 
         if(self.type != 'car' and self.type != "agent"):
             if("transitRoute" not in self.events.columns):
@@ -253,11 +256,11 @@ class MHD(Agent):
             #end and start trip
             if not in_station and row.type == "VehicleArrivesAtFacility":
                 in_station = True
+                station_coords = [row.coords_x, row.coords_y]
                 #save finished Trip
                 if (trip.start > -1):
                     trip.append_time(time)
-                    trip.append_location(B) #add end
-                    #trip.destination = str(row.facility) unused
+                    trip.append_location(station_coords)
                     trip.get_locations_by_second()
                     self.trips.append(trip)
                     old_passengers = trip.passengers.copy()
@@ -268,7 +271,7 @@ class MHD(Agent):
                 trip.route_id = trip_route
                 trip.line_id = trip_line
                 trip.append_time(time)
-                trip.append_location(A) # add start
+                trip.append_location(station_coords)
 
             elif row.type == "PersonEntersVehicle":
                 #check if passenger leaves vehicle
@@ -292,11 +295,21 @@ class MHD(Agent):
 
             #start trip
             elif in_station and (row.type == "VehicleDepartsAtFacility"):
+                trip.append_time(time)
+                trip.append_location(station_coords)
+                left_station = True
                 in_station = False
 
-            if not np.isnan(A[0]):
+            if not np.isnan(A[0]) and not in_station and not left_station:
                 trip.append_time(time)
                 trip.append_location(A)
+            elif in_station:
+                trip.append_time(time)
+                trip.append_location(station_coords)
+            elif left_station:
+                left_station = False
+
+
 
             if(not in_station and ((row.type == "PersonEntersVehicle") or (row.type == "PersonLeavesVehicle")) and row.person_id.isnumeric()):
                 print("Vehicle is not in station and there are changes in passenger list",
