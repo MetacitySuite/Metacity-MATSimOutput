@@ -10,7 +10,7 @@ import pandas as pd
 pd.options.mode.chained_assignment = None
 
 import network as net
-from agent import MHD, Car, Human
+from agent import MHD, Car, Human, Bike
 
 OUTPUT_FORMAT = 'json'
 PARALLEL = True
@@ -40,7 +40,7 @@ class Exporter:
             if(self.export_mode == CARS):
                 self.transport_map = self.load_transport_map(['car'])
             else:
-                self.transport_map = self.load_transport_map(["bus","car","funicular","subway", "tram"])
+                self.transport_map = self.load_transport_map(["bus","car","bike","funicular","subway", "tram"])
         else:
             self.transport_map = {}
         
@@ -94,7 +94,7 @@ class Exporter:
 
                 
 
-    def load_transport_map(self, vehicle_types = ["car","tram","subway","bus","funicular"]):
+    def load_transport_map(self, vehicle_types = ["car","bike","tram","subway","bus","funicular"]):
         transport_map = {}
         files = os.listdir(OUTPUT+"events/")
 
@@ -256,6 +256,10 @@ class Exporter:
             
         if(self.agent_type == "car"):
             agent = Car(self.agent_type, agent_id)
+        elif(self.agent_type == "bike"):
+            #TODO
+            agent = Bike(self.agent_type, agent_id)
+            #return None
         elif(self.agent_type == "agent"):
             agent = Human(self.agent_type, agent_id)
         else:

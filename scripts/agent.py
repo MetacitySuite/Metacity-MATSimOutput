@@ -50,6 +50,9 @@ class Agent:
         if(self.type == 'car'): # create consistent id for all vehicles
             trips_id = "veh_"+str(self.id)+"_car"
 
+        if(self.type == 'bike'): # create consistent id for all vehicles
+            trips_id = "veh_"+str(self.id)
+
         if(format == 'shp'):
             start_times = []
             passengers = []
@@ -103,7 +106,7 @@ class Agent:
                     meta["veh_type"] = self.type
                     meta["vehicle_id"] = trips_id
 
-                if(self.type not in ["agent", "car"]):
+                if(self.type not in ["agent", "car", "bike"]):
                     meta['route_id'] = trip.route_id
                     meta['line_id'] = trip.line_id
 
@@ -124,68 +127,77 @@ class MHD(Agent):
     def __init__(self, agent_type,id):
         super().__init__(agent_type,id)
 
+    def get_route(self):
+        if("transitRoute" not in self.events.columns):
+            print("No routes per transit agent", self.id)
+            trip_route = "Unknown"
+
+        elif(len(self.events.transitRoute.unique())<2):
+            print("No valid routes per transit agent",self.events.transitRoute.unique(), self.events.transitLine.unique(), self.id)
+            trip_route = "Unknown"
+        else:
+            trip_route = self.events.transitRoute.unique()[1]
+            if(len(self.events.transitRoute.unique())>2):
+                print("more routes per transit agent",self.events.transitRoute.unique())
+        return trip_route
+
+    def get_line(self):
+        if("transitRoute" not in self.events.columns):
+            trip_line = "Unknown"
+
+        elif(len(self.events.transitRoute.unique())<2):
+            trip_line = "Unknown"
+        else:
+            trip_line = self.events.transitLine.unique()[1]
+
+        return trip_line
+
+
     def extract_trips_pt(self, verbal=False):
         self.trips = []
         self.events.sort_values("time", kind="stable", inplace=True)
 
         trip_starts = self.events.iloc[np.where(self.events.type == "VehicleDepartsAtFacility")].sort_values('time', inplace=True)
         trip_ends = self.events.iloc[np.where(self.events.type == "VehicleArrivesAtFacility")].sort_values('time', inplace=True)
-
         assert len(trip_starts) == len(trip_ends)
 
-
-        if("transitRoute" not in self.events.columns):
-            print("No routes per transit agent", self.id)
-            #display(self.events)
-            trip_route = "Unknown"
-            trip_line = "Unknown"
-
-        elif(len(self.events.transitRoute.unique())<2):
-            print("No valid routes per transit agent",self.events.transitRoute.unique(), self.events.transitLine.unique(), self.id)
-            #display(self.events)
-            trip_route = "Unknown"
-            trip_line = "Unknown"
-        else:
-            trip_route = self.events.transitRoute.unique()[1]
-            trip_line = self.events.transitLine.unique()[1]
-            if(len(self.events.transitRoute.unique())>2):
-                print("more routes per transit agent",self.events.transitRoute.unique())
+        trip_route = self.get_route()
+        trip_line = self.get_line()
 
         last_start = self.events.index[0]
-        old_passengers = ()
+        old_passengers = set()
+        added = 0
 
         for start,end in zip(trip_starts,trip_ends):
-            trip = Trip(-1, old_passengers)
+            trip = Trip(start.time, old_passengers.copy())
             trip.route_id = trip_route
             trip.line_id = trip_line
-            facility_events = self.events.loc[last_start+1:start.index, :]
+
             times = []
             locations = []
             
-
-            ## standing in place
+            ## Vehicle at facility
+            facility_events = self.events.loc[last_start+1:start.index, :]
             times_facility = facility_events.time.values
-            locations_facility = facility_events.coords_from.values
+            locations_facility = [[x,y] for x,y in zip(facility_events.coords_x.values, facility_events.coords_y.values)]
 
             times.extend(times_facility)
             locations.extend(locations_facility)
+            
             ## departing
             departure_time = start.time
-            departure_location = start.coords_to
-
+            departure_location = locations_facility[-1]
             times.append(departure_time)
             locations.append(departure_location)
 
             ## trip in between stops
-            trip_events = self.events.loc[start.index+1:end.index,:]
-            
-            trip_times = trip_events.time.values
-            trip_locations = trip_events.coords_from.values
+            trip_events = self.events.loc[start.index+2:end.index,:]# +2 -> remove end of link after facility for continouous acceleration
+            trip_times = trip_events[~trip_events.coords_from[0].isnan()].time.values
+            trip_locations = trip_events[~trip_events.coords_from[0].isnan()].coords_from.values
             
             #arrival
             trip_times.append(end.time)
             trip_locations.append(end.coords_from)
-
 
             times.extend(trip_times)
             locations.extend(trip_locations)
@@ -201,6 +213,7 @@ class MHD(Agent):
 
             for passenger in incoming:
                 if(passenger.isnumeric()) and self.events.iloc[np.where(self.events.person_id == passenger)].shape[0] > 1:
+                    added +=1
                     trip.add_passenger(passenger)
 
 
@@ -209,10 +222,12 @@ class MHD(Agent):
             trip.locations = locations
 
             last_start = end.index
-            old_passengers = trip.passengers
-            trip.start = start.time
+            old_passengers = trip.passengers.copy()
             self.trips.append(trip)
             
+        if(added == 0 and self.type == "bus"):
+            self.trips = []
+
 
     def extract_trips(self, verbal=False):
         self.trips =[]
@@ -221,31 +236,27 @@ class MHD(Agent):
         added = 0
         stuck = 0
         
-
         old_passengers = set()
         trip = Trip(-1, old_passengers)
         trip_order = 0
 
-        #print(self.events.head(20))
+        if("transitRoute" not in self.events.columns):
+            print("No routes per transit agent", self.id)
+            #display(self.events)
+            trip_route = "Unknown"
+            trip_line = "Unknown"
 
-        if(self.type != 'car' and self.type != "agent"):
-            if("transitRoute" not in self.events.columns):
-                print("No routes per transit agent", self.id)
-                #display(self.events)
-                trip_route = "Unknown"
-                trip_line = "Unknown"
+        elif(len(self.events.transitRoute.unique())<2):
+            print("No valid routes per transit agent",self.events.transitRoute.unique(), self.events.transitLine.unique(), self.id)
+            #display(self.events)
+            trip_route = "Unknown"
+            trip_line = "Unknown"
 
-            elif(len(self.events.transitRoute.unique())<2):
-                print("No valid routes per transit agent",self.events.transitRoute.unique(), self.events.transitLine.unique(), self.id)
-                #display(self.events)
-                trip_route = "Unknown"
-                trip_line = "Unknown"
-
-            else:
-                trip_route = self.events.transitRoute.unique()[1]
-                trip_line = self.events.transitLine.unique()[1]
-                if(len(self.events.transitRoute.unique())>2):
-                    print("more routes per transit agent",self.events.transitRoute.unique())
+        else:
+            trip_route = self.events.transitRoute.unique()[1]
+            trip_line = self.events.transitLine.unique()[1]
+            if(len(self.events.transitRoute.unique())>2):
+                print("more routes per transit agent",self.events.transitRoute.unique())
 
         
         for e, row in self.events.iterrows():
@@ -310,7 +321,6 @@ class MHD(Agent):
                 left_station = False
 
 
-
             if(not in_station and ((row.type == "PersonEntersVehicle") or (row.type == "PersonLeavesVehicle")) and row.person_id.isnumeric()):
                 print("Vehicle is not in station and there are changes in passenger list",
                 row.type, row.person_id, row.time)
@@ -371,7 +381,97 @@ class Car(Agent):
             self.extract_trip(start, end)
 
                     
-        
+    def extract_trips(self, verbal=False):
+        self.trips = []
+
+        old_passengers = set()
+        trip = Trip(-1, old_passengers)
+
+        for e, row in self.events.iterrows():
+            A = row.coords_from
+            B = row.coords_to
+            time = row.time
+
+            #end and start trip  
+            if row.type == "PersonEntersVehicle": #1 passenger per car
+                #start new Trip
+                #print("Vehicle arrived at facility:", row.facility)
+                trip = Trip(time, old_passengers)
+                trip.append_time(time)
+                trip.append_location(A)
+                #check if passenger leaves vehicle
+                two_interactions = self.events.iloc[np.where(self.events.person_id == row.person_id)].shape[0] > 1
+                if two_interactions and str(row.person_id).isnumeric():
+                    #print("Adding passenger:", row.person_id)
+                    trip.add_passenger(row.person_id)
+                elif str(row.person_id).isnumeric():
+                    print("Passenger:", row.person_id,"does not leave vehicle.")
+
+            elif row.type == "PersonLeavesVehicle":
+                if(str(row.person_id).isnumeric()):
+                    #print("Removing passenger:", row.person_id)
+                    trip.append_time(time)
+                    trip.append_location(B)
+                    #trip.destination = str(row.facility) unused
+                    trip.get_locations_by_second()
+                    self.trips.append(trip)
+                    old_passengers = trip.passengers
+
+            if not np.isnan(A[0]):
+                trip.append_time(time)
+                trip.append_location(A)
+
+
+class Bike(Agent):
+    def __init__(self, agent_type,id):
+        super().__init__("bike",id)
+
+    def extract_trip(self, start, end):
+        if(start > end):
+            print("Person leaves vehicle before entering.")
+            print(self.events.shape[0])
+            print(self.events[["time","type","link","person_id"]])
+            return
+        trip = Trip(-1, set())
+        trip_events = self.events.loc[start:end, ["time","type","person_id","coords_from","coords_to"]]
+
+        trip.times = trip_events.time.values
+        locations = list(trip_events.coords_from.values)
+        locations[-1] = list(trip_events.coords_to.values)[-1]
+        trip.locations = locations
+        unique_passengers = set(trip_events.person_id.unique())
+        try:
+            unique_passengers.remove(np.nan)
+        except KeyError:
+            print("NaN is not in unique passengers.")
+        for passenger in unique_passengers:
+            trip.add_passenger(passenger) #for single passenger car
+
+        trip.start = trip.times[0]
+        print("locations")
+        print(trip.locations)
+        self.trips.append(trip)
+
+
+    def extract_trips_bike(self, verbal=False):
+        self.trips = []
+        self.events.sort_values(["time"], kind="stable", inplace=True)
+        self.events.reset_index(drop=True, inplace=True)
+
+        trip_starts = self.events.iloc[np.where(self.events.type == "PersonEntersVehicle")]
+        trip_starts.sort_values('time', inplace=True)
+        trip_ends = self.events.iloc[np.where(self.events.type == "PersonLeavesVehicle")]
+        trip_ends.sort_values('time', inplace=True)
+
+        #print("prepping:", self.id)
+        assert len(trip_starts) == len(trip_ends)
+
+        trip_times = zip(list(trip_starts.index), list(trip_ends.index))
+
+        for start, end in trip_times:
+            self.extract_trip(start, end)
+
+
 
     def extract_trips(self, verbal=False):
         self.trips = []
@@ -413,6 +513,7 @@ class Car(Agent):
                 trip.append_time(time)
                 trip.append_location(A)
 
+
 class Human(Agent):
     def __init__(self, agent_type,id):
         super().__init__("agent",id)
@@ -440,8 +541,9 @@ class Human(Agent):
             #print("Person did not arrive safely.")
             return home_coords, -1, -1
     
+    #TODO
     def extract_trips(self, verbal=False):
-        #self.trips = []
+        self.trips = []
         trip = Trip(-1, set())
         in_trip = False
         in_mhd = False

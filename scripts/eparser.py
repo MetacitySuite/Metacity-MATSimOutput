@@ -16,7 +16,7 @@ from multiprocessing import Pool
 EVENTS = "./output/events/"
 AGENTS = "./output/agents/"
 
-vehicle_types = ["bus","car","funicular","subway", "tram"]
+vehicle_types = [ "car","bike","ferry","bus","funicular","subway", "tram"]
 #vehicle_types = ["car"]
 
 
@@ -129,7 +129,7 @@ def load_vehicle_events(row, vehicle_type):
     event["coords_x"] = row["x"]
     event["coords_y"] = row["y"]
 
-    if(vehicle_type != "car"):
+    if(vehicle_type != "car" or vehicle_type != "bike"):
         if(event["type"] == "TransitDriverStarts"):
             event["transitLine"] = row['transitLineId']
             event["transitRoute"] = row['transitRouteId'] ## add to output
@@ -240,6 +240,8 @@ class EventParser:
 
             if veh_type == 'car':
                 vehicles = events[pd.to_numeric(events['vehicle'], errors='coerce').notnull()]
+            elif veh_type == 'bike':
+                vehicles = events.loc[events['vehicle'].str.contains("_bike", case=False)]
             else:
                 vehicles = events.loc[events['vehicle'].str.contains(veh_type, case=False)]
                 driver_events = events[events['vehicleId'].notnull() & events['vehicleId'].str.contains(veh_type, case=False)]
@@ -248,7 +250,7 @@ class EventParser:
                 vehicles = vehicles.append(driver_events, ignore_index=True, verify_integrity=True)
 
 
-            if(veh_type == "car"):
+            if(veh_type == "car" or veh_type == "bike"):
                 vehicles = vehicles.rename(columns={0:"events_id","person":"person_id",
                                     "x":"coords_x","y":"coords_y"})
                 old_columns = vehicles.columns
@@ -303,9 +305,10 @@ class EventParser:
 
         del events
         gc.collect()
-        self.save_agents_parallel(dfs, cpu_available)
-
+    
         self.save_vehicles_parallel(args, cpu_available)
+
+        self.save_agents_parallel(dfs, cpu_available)
         
         return
 
