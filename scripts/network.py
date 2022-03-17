@@ -58,6 +58,9 @@ class Network:
         self.net = self.net.join(self.nodes.set_index("node"), on="from", rsuffix="_from")
         self.net = self.net.join(self.nodes.set_index("node"), on="to", rsuffix="_to")
         self.net["link_modes"] = self.net.modes
+        self.net["freespeed"] = self.net.freespeed
+        self.net["capacity"] = self.net.capacity
+        self.net["lanes"] = self.net.permlanes
         self.net.drop(["x","y","modes"], axis=1, inplace=True)
 
 
@@ -68,16 +71,25 @@ class Network:
         #todo
         lines = []
         modes = []
+        speeds = []
+        capacities = []
+        lanes = []
         idx = []
         for i,link in self.net.iterrows():
             line = LineString([(-float(link['x_from']), -float(link['y_from'])), (-float(link['x_to']), -float(link['y_to']))])
             lines.append(line)
             idx.append(link["link"])
             modes.append(link['link_modes'])
+            speeds.append(link['freespeed'])
+            capacities.append(link['capacity'])
+            lanes.append(link['lanes'])
+
 
         network_shp = gpd.GeoDataFrame(data={
                                 'geometry': lines,
                                 'mode' : modes,
+                                'speed' : speeds,
+                                'capacity' : capacities,
                                 'index' : idx,
                                 })
 

@@ -330,7 +330,6 @@ class MHD(Agent):
             self.trips = []
 
         
-
 class Car(Agent):
     def __init__(self, agent_type,id):
         super().__init__("car",id)
@@ -472,7 +471,6 @@ class Bike(Agent):
             self.extract_trip(start, end)
 
 
-
     def extract_trips(self, verbal=False):
         self.trips = []
 
@@ -514,6 +512,7 @@ class Bike(Agent):
                 trip.append_location(A)
 
 
+## unfinished - need to agree on format first
 class Human(Agent):
     def __init__(self, agent_type,id):
         super().__init__("agent",id)
